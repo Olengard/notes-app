@@ -372,9 +372,12 @@ Rispondi SOLO con JSON valido, nessun testo extra.`,
 
   const systemPrompt = prompts[noteType] || prompts.text;
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetch("/api/transcribe", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+    },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: 2000,
