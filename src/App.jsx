@@ -297,18 +297,7 @@ function handleEditorKeyDown(e, editorRef) {
 
 const ANTHROPIC_API_KEY = ""; // ← inserisci qui la tua API key Anthropic
 
-async function transcribeAndParse(audioBlob, noteType, apiKey) {
-  // Convert blob to base64
-  const arrayBuffer = await audioBlob.arrayBuffer();
-  const uint8 = new Uint8Array(arrayBuffer);
-  let binary = "";
-  for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
-  const base64 = btoa(binary);
-
-  // Detect mime type
-  const mediaType = audioBlob.type || "audio/webm";
-
-  // Build prompt based on note type
+async function parseWithClaude(transcript, noteType, apiKey) {
   const prompts = {
     reading: `Sei un assistente per note di lettura. L'utente ha dettato una nota vocale.
 Trascrivi e struttura il contenuto nel seguente JSON:
@@ -382,16 +371,7 @@ Rispondi SOLO con JSON valido, nessun testo extra.`,
       model: "claude-sonnet-4-20250514",
       max_tokens: 2000,
       system: systemPrompt,
-      messages: [{
-        role: "user",
-        content: [{
-          type: "document",
-          source: { type: "base64", media_type: mediaType, data: base64 },
-        }, {
-          type: "text",
-          text: "Trascrivi e struttura questa nota vocale."
-        }]
-      }]
+      messages: [{ role: "user", content: transcript }]
     })
   });
 
@@ -406,57 +386,65 @@ Rispondi SOLO con JSON valido, nessun testo extra.`,
   return JSON.parse(clean);
 }
 
+
 function AudioRecorder({ noteType, onResult, apiKey }) {
   const [state, setState] = useState("idle"); // idle | recording | processing | done | error
   const [errorMsg, setErrorMsg] = useState(null);
   const [seconds, setSeconds] = useState(0);
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
+  const recognitionRef = useRef(null);
+  const transcriptRef  = useRef("");
   const timerRef = useRef(null);
 
   const key = apiKey || ANTHROPIC_API_KEY;
 
-  const startRecording = async () => {
+  const startRecording = () => {
     if (!key) { setErrorMsg("API key mancante — vedi istruzioni"); setState("error"); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { setErrorMsg("Usa Chrome o Safari"); setState("error"); return; }
+
+    const recognition = new SR();
+    recognition.lang = "it-IT";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    transcriptRef.current = "";
+
+    recognition.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) transcriptRef.current += e.results[i][0].transcript + " ";
+      }
+    };
+    recognition.onerror = (e) => {
+      clearInterval(timerRef.current);
+      setErrorMsg("Errore microfono: " + e.error);
+      setState("error");
+    };
+
+    recognition.start();
+    recognitionRef.current = recognition;
+    transcriptRef.current = "";
+    setSeconds(0);
+    setState("recording");
+    timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+  };
+
+  const stopRecording = async () => {
+    clearInterval(timerRef.current);
+    recognitionRef.current?.stop();
+    setState("processing");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4" });
-      chunksRef.current = [];
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        clearInterval(timerRef.current);
-        setState("processing");
-        try {
-          const blob = new Blob(chunksRef.current, { type: mr.mimeType });
-          const result = await transcribeAndParse(blob, noteType, key);
-          onResult(result);
-          setState("done");
-          setTimeout(() => setState("idle"), 2000);
-        } catch (e) {
-          setErrorMsg(e.message);
-          setState("error");
-        }
-      };
-      mr.start(1000);
-      mediaRecorderRef.current = mr;
-      setSeconds(0);
-      setState("recording");
-      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+      const transcript = transcriptRef.current.trim();
+      if (!transcript) throw new Error("Nessun testo rilevato — riprova");
+      const result = await parseWithClaude(transcript, noteType, key);
+      onResult(result);
+      setState("done");
+      setTimeout(() => setState("idle"), 2000);
     } catch (e) {
-      setErrorMsg("Microfono non disponibile");
+      setErrorMsg(e.message);
       setState("error");
     }
   };
 
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-  };
-
-  useEffect(() => () => { clearInterval(timerRef.current); mediaRecorderRef.current?.stop(); }, []);
-
-  const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-
+  useEffect(() => () => { clearInterval(timerRef.current); recognitionRef.current?.stop(); }, []);
   if (state === "idle") return (
     <button onClick={startRecording} title="Registra nota vocale"
       style={{ background: "none", border: "1px solid #e0d8cc", borderRadius: "6px", padding: "3px 10px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#8b7355", display: "flex", alignItems: "center", gap: "5px", transition: "all 0.15s" }}
