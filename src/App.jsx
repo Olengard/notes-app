@@ -387,64 +387,73 @@ Rispondi SOLO con JSON valido, nessun testo extra.`,
 }
 
 
-function AudioRecorder({ noteType, onResult, apiKey }) {
+function AudioRecorder({ noteType, onResult, apiKey, openaiKey }) {
   const [state, setState] = useState("idle"); // idle | recording | processing | done | error
   const [errorMsg, setErrorMsg] = useState(null);
   const [seconds, setSeconds] = useState(0);
-  const recognitionRef = useRef(null);
-  const transcriptRef  = useRef("");
   const timerRef = useRef(null);
 
   const key = apiKey || ANTHROPIC_API_KEY;
 
-  const startRecording = () => {
-    if (!key) { setErrorMsg("API key mancante — vedi istruzioni"); setState("error"); return; }
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { setErrorMsg("Usa Chrome o Safari"); setState("error"); return; }
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
 
-    const recognition = new SR();
-    recognition.lang = "it-IT";
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    transcriptRef.current = "";
-
-    recognition.onresult = (e) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) transcriptRef.current += e.results[i][0].transcript + " ";
-      }
-    };
-    recognition.onerror = (e) => {
-      clearInterval(timerRef.current);
-      setErrorMsg("Errore microfono: " + e.error);
-      setState("error");
-    };
-
-    recognition.start();
-    recognitionRef.current = recognition;
-    transcriptRef.current = "";
-    setSeconds(0);
-    setState("recording");
-    timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
-  };
-
-  const stopRecording = async () => {
-    clearInterval(timerRef.current);
-    recognitionRef.current?.stop();
-    setState("processing");
+  const startRecording = async () => {
+    if (!key && !openaiKey) { setErrorMsg("API key mancante — vedi istruzioni"); setState("error"); return; }
     try {
-      const transcript = transcriptRef.current.trim();
-      if (!transcript) throw new Error("Nessun testo rilevato — riprova");
-      const result = await parseWithClaude(transcript, noteType, key);
-      onResult(result);
-      setState("done");
-      setTimeout(() => setState("idle"), 2000);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+      const mr = new MediaRecorder(stream, { mimeType });
+      chunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        clearInterval(timerRef.current);
+        setState("processing");
+        try {
+          const blob = new Blob(chunksRef.current, { type: mimeType });
+          // Step 1: Transcribe with Whisper
+          const formData = new FormData();
+          formData.append("file", blob, "audio.webm");
+          formData.append("model", "whisper-1");
+          formData.append("language", "it");
+          const whisperRes = await fetch("/api/whisper", {
+            method: "POST",
+            headers: { "x-openai-key": openaiKey },
+            body: formData,
+          });
+          if (!whisperRes.ok) {
+            const err = await whisperRes.json().catch(() => ({}));
+            throw new Error(err.error?.message || "Errore trascrizione");
+          }
+          const { text: transcript } = await whisperRes.json();
+          if (!transcript?.trim()) throw new Error("Nessun testo rilevato — riprova");
+          // Step 2: Parse with Claude
+          const result = await parseWithClaude(transcript, noteType, key);
+          onResult(result);
+          setState("done");
+          setTimeout(() => setState("idle"), 2000);
+        } catch (e) {
+          setErrorMsg(e.message);
+          setState("error");
+        }
+      };
+      mr.start(1000);
+      mediaRecorderRef.current = mr;
+      setSeconds(0);
+      setState("recording");
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
     } catch (e) {
-      setErrorMsg(e.message);
+      setErrorMsg("Microfono non disponibile");
       setState("error");
     }
   };
 
-  useEffect(() => () => { clearInterval(timerRef.current); recognitionRef.current?.stop(); }, []);
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+  };
+
+  useEffect(() => () => { clearInterval(timerRef.current); mediaRecorderRef.current?.stop(); }, []);
   if (state === "idle") return (
     <button onClick={startRecording} title="Registra nota vocale"
       style={{ background: "none", border: "1px solid #e0d8cc", borderRadius: "6px", padding: "3px 10px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#8b7355", display: "flex", alignItems: "center", gap: "5px", transition: "all 0.15s" }}
@@ -748,7 +757,7 @@ function QuoteCard({ quote, onUpdate, onDelete, dragHandleProps, isDragging }) {
 
 // ─── Reading Editor ───────────────────────────────────────────────────────────
 
-function ReadingEditor({ note, folders, onUpdate, allNotes = [], onPreview, audioApiKey }) {
+function ReadingEditor({ note, folders, onUpdate, allNotes = [], onPreview, audioApiKey, openaiApiKey }) {
   const [title, setTitle] = useState(note.title);
   const [tags, setTags] = useState(note.tags);
   const [folder, setFolder] = useState(note.folder);
@@ -1211,7 +1220,7 @@ function BacklinksPanel({ note, allNotes, onLinkClick }) {
   );
 }
 
-function NoteEditor({ note, folders, onUpdate, allNotes = [], onPreview, audioApiKey }) {
+function NoteEditor({ note, folders, onUpdate, allNotes = [], onPreview, audioApiKey, openaiApiKey }) {
   const editorRef = useRef();
   const [title, setTitle] = useState(note.title);
   const [tags, setTags] = useState(note.tags);
@@ -1426,7 +1435,7 @@ function NoteEditor({ note, folders, onUpdate, allNotes = [], onPreview, audioAp
             </select>
           )}
           <TagInput tags={tags} onChange={setTags} />
-          <AudioRecorder noteType={note.type} apiKey={audioApiKey} onResult={(r) => {
+          <AudioRecorder noteType={note.type} apiKey={audioApiKey} openaiKey={openaiApiKey} onResult={(r) => {
             if (r.title) setTitle(r.title);
             if (r.tags)  setTags((p) => [...new Set([...p, ...r.tags])]);
             if (r.content && editorRef.current) editorRef.current.innerHTML = (editorRef.current.innerHTML || "") + (note.type === "quick" ? r.content : (r.content || ""));
@@ -1516,7 +1525,7 @@ function NoteEditor({ note, folders, onUpdate, allNotes = [], onPreview, audioAp
 
 // ─── Meeting Editor ───────────────────────────────────────────────────────────
 
-function MeetingEditor({ note, folders, onUpdate, allNotes, onPreview, audioApiKey }) {
+function MeetingEditor({ note, folders, onUpdate, allNotes, onPreview, audioApiKey, openaiApiKey }) {
   const [title, setTitle] = useState(note.title);
   const [tags,  setTags]  = useState(note.tags);
   const [folder, setFolder] = useState(note.folder);
@@ -1583,7 +1592,7 @@ function MeetingEditor({ note, folders, onUpdate, allNotes, onPreview, audioApiK
             {folders.map((f) => <option key={f}>{f}</option>)}
           </select>
           <TagInput tags={tags} onChange={setTags} />
-          <AudioRecorder noteType="meeting" apiKey={audioApiKey} onResult={(r) => {
+          <AudioRecorder noteType="meeting" apiKey={audioApiKey} openaiKey={openaiApiKey} onResult={(r) => {
             if (r.title)   setTitle(r.title);
             if (r.tags)    setTags((p) => [...new Set([...p, ...r.tags])]);
             if (r.content && editorRef.current) editorRef.current.innerHTML = r.content;
@@ -1720,7 +1729,7 @@ function ActionItem({ action, onChange, onDelete }) {
 
 // ─── Journal Editor ───────────────────────────────────────────────────────────
 
-function JournalEditor({ note, folders, onUpdate, audioApiKey }) {
+function JournalEditor({ note, folders, onUpdate, audioApiKey, openaiApiKey }) {
   const [title,  setTitle]   = useState(note.title);
   const [tags,   setTags]    = useState(note.tags);
   const [folder, setFolder]  = useState(note.folder);
@@ -1792,7 +1801,7 @@ function JournalEditor({ note, folders, onUpdate, audioApiKey }) {
             {folders.map((f) => <option key={f}>{f}</option>)}
           </select>
           <TagInput tags={tags} onChange={setTags} />
-          <AudioRecorder noteType="journal" apiKey={audioApiKey} onResult={(r) => {
+          <AudioRecorder noteType="journal" apiKey={audioApiKey} openaiKey={openaiApiKey} onResult={(r) => {
             const today = new Date().toISOString().slice(0, 10);
             const existing = entries.find((e) => e.date === today);
             if (existing) {
@@ -2854,11 +2863,13 @@ function slugify(str) {
   return (str || "nota").toLowerCase().replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
 }
 
-function ExportImportPanel({ notes, folders, onImport, onClose, onSaveApiKey, currentApiKey }) {
+function ExportImportPanel({ notes, folders, onImport, onClose, onSaveApiKey, currentApiKey, onSaveOpenaiKey, currentOpenaiKey }) {
   const [importError, setImportError] = useState(null);
   const [importSuccess, setImportSuccess] = useState(false);
   const [localApiKey, setLocalApiKey] = useState(currentApiKey || '');
   const [apiKeySaved, setApiKeySaved] = useState(false);
+  const [localOpenaiKey, setLocalOpenaiKey] = useState(currentOpenaiKey || '');
+  const [openaiKeySaved, setOpenaiKeySaved] = useState(false);
   const fileInputRef = useRef();
 
   const exportAllJSON = () => {
@@ -2956,6 +2967,24 @@ function ExportImportPanel({ notes, folders, onImport, onClose, onSaveApiKey, cu
           </button>
           <div style={{ marginTop: "6px", fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#b0a898" }}>
             La chiave è salvata solo in locale nel tuo browser.
+          </div>
+        </div>
+
+        {/* OpenAI key for Whisper */}
+        <div style={{ marginBottom: "20px" }}>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#8b7355", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "10px" }}>
+            🎙 OpenAI Key (Whisper — trascrizione)
+          </div>
+          <input type="password" value={localOpenaiKey} onChange={(e) => setLocalOpenaiKey(e.target.value)}
+            placeholder="sk-..."
+            style={{ width: "100%", padding: "8px 12px", border: "1px solid #e0d8cc", borderRadius: "7px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#2c2416", outline: "none", boxSizing: "border-box", marginBottom: "7px" }}
+          />
+          <button onClick={() => { onSaveOpenaiKey(localOpenaiKey); setOpenaiKeySaved(true); setTimeout(() => setOpenaiKeySaved(false), 2000); }}
+            style={{ background: "#8b7355", border: "none", borderRadius: "6px", padding: "6px 16px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "white" }}>
+            {openaiKeySaved ? "✓ salvata" : "Salva"}
+          </button>
+          <div style={{ marginTop: "6px", fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#b0a898" }}>
+            Usata solo per la trascrizione vocale. Salvata in locale.
           </div>
         </div>
 
@@ -3089,6 +3118,7 @@ export default function NotesApp() {
   const [previewNote,  setPreviewNote]  = useState(null);
   const [showExport,   setShowExport]   = useState(false);
   const [audioApiKey,  setAudioApiKey]  = useState(() => { try { return localStorage.getItem('notes_anthropic_key') || ''; } catch { return ''; } });
+  const [openaiApiKey, setOpenaiApiKey] = useState(() => { try { return localStorage.getItem('notes_openai_key') || ''; } catch { return ''; } });
   const [sortOrder,    setSortOrder]    = useState("updated"); // updated | created | alpha
 
   // ── Auth state ──
@@ -3220,6 +3250,11 @@ export default function NotesApp() {
   const saveAudioApiKey = (key) => {
     setAudioApiKey(key);
     try { localStorage.setItem('notes_anthropic_key', key); } catch {}
+  };
+
+  const saveOpenaiApiKey = (key) => {
+    setOpenaiApiKey(key);
+    try { localStorage.setItem('notes_openai_key', key); } catch {}
   };
 
   const importData = (importedNotes, importedFolders) => {
@@ -3422,12 +3457,12 @@ export default function NotesApp() {
           </div>
           <div style={{ flex: 1, overflowY: "auto" }}>
             {activeNote.type === "reading"
-              ? <ReadingEditor key={activeNote.id} note={activeNote} folders={folderNames} onUpdate={updateNote} allNotes={notes} onPreview={setPreviewNote} audioApiKey={audioApiKey} />
+              ? <ReadingEditor key={activeNote.id} note={activeNote} folders={folderNames} onUpdate={updateNote} allNotes={notes} onPreview={setPreviewNote} audioApiKey={audioApiKey} openaiApiKey={openaiApiKey} />
               : activeNote.type === "meeting"
-                ? <MeetingEditor key={activeNote.id} note={activeNote} folders={folderNames} onUpdate={updateNote} allNotes={notes} onPreview={setPreviewNote} audioApiKey={audioApiKey} />
+                ? <MeetingEditor key={activeNote.id} note={activeNote} folders={folderNames} onUpdate={updateNote} allNotes={notes} onPreview={setPreviewNote} audioApiKey={audioApiKey} openaiApiKey={openaiApiKey} />
                 : activeNote.type === "journal"
-                  ? <JournalEditor key={activeNote.id} note={activeNote} folders={folderNames} onUpdate={updateNote} audioApiKey={audioApiKey} />
-                  : <NoteEditor key={activeNote.id} note={activeNote} folders={folderNames} onUpdate={updateNote} allNotes={notes} onPreview={setPreviewNote} audioApiKey={audioApiKey} />
+                  ? <JournalEditor key={activeNote.id} note={activeNote} folders={folderNames} onUpdate={updateNote} audioApiKey={audioApiKey} openaiApiKey={openaiApiKey} />
+                  : <NoteEditor key={activeNote.id} note={activeNote} folders={folderNames} onUpdate={updateNote} allNotes={notes} onPreview={setPreviewNote} audioApiKey={audioApiKey} openaiApiKey={openaiApiKey} />
             }
           </div>
         </>
@@ -3562,7 +3597,7 @@ export default function NotesApp() {
         </>
       )}
       {showExport && (
-        <ExportImportPanel notes={notes} folders={folders} onImport={importData} onClose={() => setShowExport(false)} onSaveApiKey={saveAudioApiKey} currentApiKey={audioApiKey} />
+        <ExportImportPanel notes={notes} folders={folders} onImport={importData} onClose={() => setShowExport(false)} onSaveApiKey={saveAudioApiKey} currentApiKey={audioApiKey} onSaveOpenaiKey={saveOpenaiApiKey} currentOpenaiKey={openaiApiKey} />
       )}
     </div>
   );
