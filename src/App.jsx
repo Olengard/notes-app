@@ -297,7 +297,7 @@ function handleEditorKeyDown(e, editorRef) {
 
 const ANTHROPIC_API_KEY = ""; // ← inserisci qui la tua API key Anthropic
 
-async function transcribeAndParse(audioBlob, noteType) {
+async function transcribeAndParse(audioBlob, noteType, apiKey) {
   // Convert blob to base64
   const arrayBuffer = await audioBlob.arrayBuffer();
   const uint8 = new Uint8Array(arrayBuffer);
@@ -429,7 +429,7 @@ function AudioRecorder({ noteType, onResult, apiKey }) {
         setState("processing");
         try {
           const blob = new Blob(chunksRef.current, { type: mr.mimeType });
-          const result = await transcribeAndParse(blob, noteType);
+          const result = await transcribeAndParse(blob, noteType, key);
           onResult(result);
           setState("done");
           setTimeout(() => setState("idle"), 2000);
