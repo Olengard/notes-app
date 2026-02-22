@@ -1980,7 +1980,7 @@ function NewNoteMenu({ onSelect, onClose, anchor }) {
   ];
 
   const style = anchor
-    ? { position: "fixed", top: anchor.top, right: anchor.right, left: "auto" }
+    ? { position: "fixed", top: anchor.top, right: anchor.right !== undefined ? anchor.right : "auto", left: anchor.left !== undefined ? anchor.left : "auto" }
     : { position: "absolute", top: "calc(100% + 6px)", left: "0" };
 
   return (
@@ -3335,7 +3335,7 @@ export default function NotesApp() {
         <ResetDemoButton />
       </div>
       <div style={{ padding: "14px 12px", borderBottom: "1px solid #3d3020", position: "relative" }}>
-        <button onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuAnchor({ top: r.bottom + 6, right: window.innerWidth - r.right }); setShowNewMenu((v) => !v); }} style={{ width: "100%", background: "#c4a882", border: "none", borderRadius: "6px", padding: "8px 12px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#2c2416", fontWeight: "500", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenuAnchor({ top: r.bottom + 6, left: r.left }); setShowNewMenu((v) => !v); }} style={{ width: "100%", background: "#c4a882", border: "none", borderRadius: "6px", padding: "8px 12px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#2c2416", fontWeight: "500", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           + Nuova nota <span style={{ fontSize: "9px", opacity: 0.6 }}>▼</span>
         </button>
         {showNewMenu && <NewNoteMenu onSelect={(a) => { createNote(a); setDrawerOpen(false); if (isMobile) setMobileView("editor"); }} onClose={() => { setShowNewMenu(false); setMenuAnchor(null); }} anchor={menuAnchor} />}
