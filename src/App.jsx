@@ -454,6 +454,8 @@ function AudioRecorder({ noteType, onResult, apiKey, openaiKey }) {
   };
 
   useEffect(() => () => { clearInterval(timerRef.current); mediaRecorderRef.current?.stop(); }, []);
+
+  const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   if (state === "idle") return (
     <button onClick={startRecording} title="Registra nota vocale"
       style={{ background: "none", border: "1px solid #e0d8cc", borderRadius: "6px", padding: "3px 10px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#8b7355", display: "flex", alignItems: "center", gap: "5px", transition: "all 0.15s" }}
