@@ -9,10 +9,19 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Convert app note → DB rows (notes + todos + quotes)
 function noteToRows(note, userId) {
+  // Serialize type-specific fields into content as JSON envelope
+  let contentField = note.content || null;
+  if (note.type === "meeting") {
+    contentField = JSON.stringify({ html: note.content || "", actions: note.actions || [] });
+  } else if (note.type === "journal") {
+    contentField = JSON.stringify({ entries: note.entries || [] });
+  } else if (note.type === "quick") {
+    contentField = note.content || null;
+  }
   const row = {
     id: note.id, user_id: userId,
     type: note.type, title: note.title || "",
-    content: note.content || null,
+    content: contentField,
     folder: note.folder || "Generale",
     tags: note.tags || [],
     due_date: note.dueDate || null,
@@ -34,12 +43,32 @@ function noteToRows(note, userId) {
 
 // Convert DB rows → app note
 function rowsToNote(row, todos, quotes) {
+  let noteContent = row.content || "";
+  let actions = [];
+  let entries = [];
+
+  if (row.type === "meeting") {
+    try {
+      const parsed = JSON.parse(row.content || "{}");
+      noteContent = parsed.html || "";
+      actions = parsed.actions || [];
+    } catch { noteContent = row.content || ""; }
+  } else if (row.type === "journal") {
+    try {
+      const parsed = JSON.parse(row.content || "{}");
+      entries = parsed.entries || [];
+    } catch {}
+    noteContent = "";
+  }
+
   return {
     id: row.id, type: row.type, title: row.title,
-    content: row.content || "",
+    content: noteContent,
     folder: row.folder, tags: row.tags || [],
     dueDate: row.due_date || null,
     createdAt: row.created_at, updatedAt: row.updated_at,
+    actions,
+    entries,
     todos: todos.map((t) => ({ id: t.id, text: t.text, done: t.done, due: t.due || null })),
     quotes: quotes.map((q) => ({
       id: q.id, text: q.text, author: q.author || "", bookTitle: q.book_title || "",
@@ -644,7 +673,7 @@ function TodoItem({ item, onToggle, onEdit, onDelete, onSetDue }) {
         <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 4px 8px 32px" }}>
           <input type="date" defaultValue={item.due || ""}
             onChange={(e) => { onSetDue(item.id, e.target.value || null); setShowDatePicker(false); }}
-            style={{ border: "1px solid #e0d8cc", borderRadius: "5px", padding: "3px 8px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#6b5e4e", outline: "none", background: "#faf8f5" }}
+            style={{ border: "1px solid #e0d8cc", borderRadius: "5px", padding: "3px 8px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#6b5e4e", outline: "none", background: "#fff", color: "#2c2416" }}
           />
           {item.due && (
             <button onClick={() => { onSetDue(item.id, null); setShowDatePicker(false); }}
@@ -903,11 +932,11 @@ function ReadingEditor({ note, folders, onUpdate, allNotes = [], onPreview, audi
             <div style={{ display: "flex", gap: "8px", marginBottom: "8px", flexWrap: "wrap" }}>
               <input value={newQuote.author} onChange={(e) => setNewQuote({ ...newQuote, author: e.target.value })}
                 placeholder="Autore"
-                style={{ flex: 1, minWidth: "100px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'Lora', serif", fontSize: "13px", outline: "none", background: "#fff", fontStyle: "italic" }}
+                style={{ flex: 1, minWidth: "100px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'Lora', serif", fontSize: "13px", outline: "none", background: "#fff", color: "#2c2416", fontStyle: "italic" }}
               />
               <input value={newQuote.bookTitle} onChange={(e) => setNewQuote({ ...newQuote, bookTitle: e.target.value })}
                 placeholder="Titolo del libro"
-                style={{ flex: 2, minWidth: "140px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'Lora', serif", fontSize: "13px", outline: "none", background: "#fff", fontStyle: "italic" }}
+                style={{ flex: 2, minWidth: "140px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'Lora', serif", fontSize: "13px", outline: "none", background: "#fff", color: "#2c2416", fontStyle: "italic" }}
               />
             </div>
             <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
@@ -1457,7 +1486,7 @@ function NoteEditor({ note, folders, onUpdate, allNotes = [], onPreview, audioAp
               <span style={{ fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#b0a898" }}>scadenza:</span>
               <input type="date" value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                style={{ border: "1px solid #e0d8cc", borderRadius: "5px", padding: "2px 6px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#6b5e4e", outline: "none", background: "#faf8f5" }}
+                style={{ border: "1px solid #e0d8cc", borderRadius: "5px", padding: "2px 6px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#6b5e4e", outline: "none", background: "#fff", color: "#2c2416" }}
               />
               {dueDate && <button onClick={() => setDueDate("")} style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#c4a08a" }}>✕</button>}
             </div>
@@ -1724,7 +1753,7 @@ function ActionItem({ action, onChange, onDelete }) {
         <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "2px 4px 8px 32px" }}>
           <input type="date" defaultValue={action.due || ""}
             onChange={(e) => { onChange({ ...action, due: e.target.value || null }); setShowDate(false); }}
-            style={{ border: "1px solid #e0d8cc", borderRadius: "5px", padding: "3px 8px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#6b5e4e", outline: "none", background: "#faf8f5" }}
+            style={{ border: "1px solid #e0d8cc", borderRadius: "5px", padding: "3px 8px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#6b5e4e", outline: "none", background: "#fff", color: "#2c2416" }}
           />
           {action.due && <button onClick={() => { onChange({ ...action, due: null }); setShowDate(false); }}
             style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#c4a08a" }}>rimuovi</button>}
