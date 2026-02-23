@@ -3064,7 +3064,14 @@ export default function NotesApp() {
           const l = localMap[id], r = remoteMap[id];
           if (!l) return r;
           if (!r) return l;
-          return new Date(l.updatedAt) >= new Date(r.updatedAt) ? l : r;
+          // Remote wins if newer, OR if local is missing type-specific data
+          const remoteNewer = new Date(r.updatedAt) > new Date(l.updatedAt);
+          const localMissingData =
+            (r.type === "reading" && (r.quotes || []).length > (l.quotes || []).length) ||
+            (r.type === "meeting" && (r.actions || []).length > (l.actions || []).length) ||
+            (r.type === "journal" && (r.entries || []).length > (l.entries || []).length) ||
+            (r.type === "todo"    && (r.todos   || []).length > (l.todos   || []).length);
+          return (remoteNewer || localMissingData) ? r : l;
         });
       });
       if (remote.folders.length > 0) setFolders(remote.folders);
