@@ -3086,21 +3086,20 @@ export default function NotesApp() {
   }, [notes, folders]);
 
   // Background Supabase sync (debounced, non-blocking)
-  const pendingSyncRef = useRef(new Set());
+
+  const pendingNotesRef = useRef(new Map());
   const syncNote = useCallback((note) => {
     if (!user) return;
+    // Store the note directly so we always sync the latest version
+    pendingNotesRef.current.set(note.id, note);
     clearTimeout(syncTimerRef.current);
-    pendingSyncRef.current.add(note.id);
     syncTimerRef.current = setTimeout(() => {
-      const ids = [...pendingSyncRef.current];
-      pendingSyncRef.current.clear();
-      ids.forEach((id) => {
-        const n = notes.find((x) => x.id === id);
-        if (n) syncNoteToSupabase(n, user.id);
-      });
+      const notesToSync = [...pendingNotesRef.current.values()];
+      pendingNotesRef.current.clear();
+      notesToSync.forEach((n) => syncNoteToSupabase(n, user.id));
       folders.forEach((f, i) => syncFolderToSupabase(f, user.id, i));
     }, 2000);
-  }, [user, notes, folders]);
+  }, [user, folders]);
 
   const tagFrequency = notes.reduce((acc, n) => {
     const noteTags = [...(n.tags || []), ...(n.type === "reading" ? (n.quotes || []).flatMap((q) => q.tags || []) : [])];
