@@ -81,13 +81,14 @@ async function syncNoteToSupabase(note, userId) {
   try {
     const { row, todos, quotes } = noteToRows(note, userId);
     await supabase.from("notes").upsert(row, { onConflict: "id" });
-    if (todos.length > 0) {
-      await supabase.from("todos").delete().eq("note_id", note.id);
-      await supabase.from("todos").insert(todos);
-    }
+    // Always sync todos
+    await supabase.from("todos").delete().eq("note_id", note.id);
+    if (todos.length > 0) await supabase.from("todos").insert(todos);
+    // Always sync quotes
+    await supabase.from("quotes").delete().eq("note_id", note.id);
     if (quotes.length > 0) {
-      await supabase.from("quotes").delete().eq("note_id", note.id);
-      await supabase.from("quotes").insert(quotes);
+      const { error } = await supabase.from("quotes").insert(quotes);
+      if (error) console.warn("Quotes insert error:", error);
     }
   } catch (e) { console.warn("Sync error:", e); }
 }
@@ -3033,15 +3034,17 @@ export default function NotesApp() {
       .channel("notes-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
         async () => {
+          // Wait for quotes/todos to be saved too before pulling
+          await new Promise((r) => setTimeout(r, 1500));
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
-          // Replace everything from remote — source of truth is Supabase
           setNotes(remote.notes);
           if (remote.folders.length > 0) setFolders(remote.folders);
         }
       )
       .on("postgres_changes", { event: "*", schema: "public", table: "quotes", filter: `user_id=eq.${user.id}` },
         async () => {
+          await new Promise((r) => setTimeout(r, 500));
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
           setNotes(remote.notes);
