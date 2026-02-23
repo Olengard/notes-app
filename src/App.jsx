@@ -675,21 +675,21 @@ function QuoteCard({ quote, onUpdate, onDelete, dragHandleProps, isDragging }) {
         <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
           <input value={draft.author || ""} onChange={(e) => setDraft({ ...draft, author: e.target.value })}
             placeholder="Autore"
-            style={{ flex: 1, minWidth: "100px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'Lora', serif", fontSize: "13px", outline: "none", background: "#faf8f5", fontStyle: "italic" }}
+            style={{ flex: 1, minWidth: "100px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'Lora', serif", fontSize: "13px", outline: "none", background: "#fff", color: "#2c2416", fontStyle: "italic" }}
           />
           <input value={draft.bookTitle || ""} onChange={(e) => setDraft({ ...draft, bookTitle: e.target.value })}
             placeholder="Titolo del libro"
-            style={{ flex: 2, minWidth: "140px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'Lora', serif", fontSize: "13px", outline: "none", background: "#faf8f5", fontStyle: "italic" }}
+            style={{ flex: 2, minWidth: "140px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'Lora', serif", fontSize: "13px", outline: "none", background: "#fff", color: "#2c2416", fontStyle: "italic" }}
           />
         </div>
         <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
           <input value={draft.chapter || ""} onChange={(e) => setDraft({ ...draft, chapter: e.target.value })}
             placeholder="Capitolo / sezione"
-            style={{ flex: 2, minWidth: "120px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'DM Mono', monospace", fontSize: "11px", outline: "none", background: "#faf8f5", color: "#6b5e4e" }}
+            style={{ flex: 2, minWidth: "120px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'DM Mono', monospace", fontSize: "11px", outline: "none", background: "#fff", color: "#2c2416" }}
           />
           <input value={draft.page || ""} onChange={(e) => setDraft({ ...draft, page: e.target.value })}
             placeholder="Pagina"
-            style={{ width: "70px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'DM Mono', monospace", fontSize: "11px", outline: "none", background: "#faf8f5" }}
+            style={{ width: "70px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'DM Mono', monospace", fontSize: "11px", outline: "none", background: "#fff", color: "#2c2416" }}
           />
         </div>
         {/* Quote text */}
@@ -852,6 +852,11 @@ function ReadingEditor({ note, folders, onUpdate, allNotes = [], onPreview, audi
             {folders.map((f) => <option key={f}>{f}</option>)}
           </select>
           <TagInput tags={tags} onChange={setTags} />
+          <AudioRecorder noteType="reading" apiKey={audioApiKey} openaiKey={openaiApiKey} onResult={(r) => {
+            if (r.title)  setTitle(r.title);
+            if (r.tags)   setTags((p) => [...new Set([...p, ...r.tags])]);
+            if (r.quotes) setQuotes((p) => [...p, ...r.quotes.map((q) => ({ ...q, id: generateId(), tags: q.tags || [] }))]);
+          }} />
           <span style={{ marginLeft: "auto", fontSize: "11px", color: "#b0a898", fontFamily: "'DM Mono', monospace" }}>{formatDate(note.updatedAt)}</span>
         </div>
       </div>
@@ -905,7 +910,7 @@ function ReadingEditor({ note, folders, onUpdate, allNotes = [], onPreview, audi
             <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap" }}>
               <input value={newQuote.chapter} onChange={(e) => setNewQuote({ ...newQuote, chapter: e.target.value })}
                 placeholder="Capitolo / sezione"
-                style={{ flex: 2, minWidth: "120px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'DM Mono', monospace", fontSize: "11px", outline: "none", background: "#fff", color: "#6b5e4e" }}
+                style={{ flex: 2, minWidth: "120px", padding: "5px 9px", border: "1px solid #e0d8cc", borderRadius: "5px", fontFamily: "'DM Mono', monospace", fontSize: "11px", outline: "none", background: "#fff", color: "#2c2416" }}
               />
               <input value={newQuote.page} onChange={(e) => setNewQuote({ ...newQuote, page: e.target.value })}
                 placeholder="Pagina"
@@ -2725,335 +2730,97 @@ function ResetDemoButton() {
 // ─── Auth Screen ──────────────────────────────────────────────────────────────
 
 function AuthScreen() {
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [mode,     setMode]     = useState("login"); // login | signup | forgot
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState(null);
+  const [message,  setMessage]  = useState(null);
 
-  const sendMagicLink = async () => {
-    if (!email.trim()) return;
-    setLoading(true); setError(null);
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: window.location.href },
-    });
-    setLoading(false);
-    if (error) setError(error.message);
-    else setSent(true);
-  };
-
-  return (
-    <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f0e8", fontFamily: "'Lora', serif" }}>
-      <div style={{ width: "min(360px, 90vw)", background: "#fff", borderRadius: "16px", padding: "40px 36px", boxShadow: "0 8px 40px rgba(0,0,0,0.1)" }}>
-        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "28px", fontWeight: "700", color: "#2c2416", marginBottom: "6px" }}>
-          Note<span style={{ color: "#c4a882" }}>S</span>
-        </div>
-        <div style={{ fontSize: "13px", color: "#9a8f82", marginBottom: "32px" }}>le tue idee, sempre con te</div>
-
-        {sent ? (
-          <div>
-            <div style={{ fontSize: "32px", marginBottom: "16px" }}>📬</div>
-            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "17px", fontWeight: "600", color: "#2c2416", marginBottom: "10px" }}>Controlla la tua email</div>
-            <div style={{ fontSize: "13px", color: "#6b5e4e", lineHeight: "1.6" }}>
-              Abbiamo inviato un link di accesso a <strong>{email}</strong>.<br />Clicca il link per entrare — nessuna password necessaria.
-            </div>
-            <button onClick={() => setSent(false)} style={{ marginTop: "20px", background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#b0a898", textDecoration: "underline" }}>
-              Usa un altro indirizzo
-            </button>
-          </div>
-        ) : (
-          <div>
-            <label style={{ fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#8b7355", textTransform: "uppercase", letterSpacing: "1px", display: "block", marginBottom: "8px" }}>
-              Il tuo indirizzo email
-            </label>
-            <input
-              type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMagicLink()}
-              placeholder="nome@esempio.com" autoFocus
-              style={{ width: "100%", padding: "10px 14px", border: "1px solid #e0d8cc", borderRadius: "8px", fontFamily: "'Lora', serif", fontSize: "14px", outline: "none", marginBottom: "14px", boxSizing: "border-box", color: "#2c2416" }}
-            />
-            {error && <div style={{ fontSize: "12px", color: "#c04040", marginBottom: "10px", fontFamily: "'DM Mono', monospace" }}>{error}</div>}
-            <button onClick={sendMagicLink} disabled={loading || !email.trim()}
-              style={{ width: "100%", background: loading ? "#d0c0a8" : "#8b7355", border: "none", borderRadius: "8px", padding: "11px", cursor: loading ? "default" : "pointer", fontFamily: "'DM Mono', monospace", fontSize: "12px", color: "white", transition: "background 0.2s" }}>
-              {loading ? "Invio in corso…" : "Invia link di accesso →"}
-            </button>
-            <div style={{ marginTop: "20px", fontSize: "11px", color: "#b0a898", fontFamily: "'DM Mono', monospace", textAlign: "center" }}>
-              Nessuna password · accesso sicuro via email
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-// ─── Export / Import ──────────────────────────────────────────────────────────
-
-function noteToMarkdown(note) {
-  const date = new Date(note.updatedAt).toLocaleDateString("it-IT");
-  const tags = (note.tags || []).map((t) => `#${t}`).join(" ");
-  let md = `# ${note.title || "Senza titolo"}
-`;
-  if (tags) md += `${tags}
-`;
-  md += `_${date}_
-
-`;
-
-  if (note.type === "text" || note.type === "quick") {
-    md += (note.content || "")
-      .replace(/<strong>(.*?)<\/strong>/gi, "**$1**")
-      .replace(/<em>(.*?)<\/em>/gi, "_$1_")
-      .replace(/<u>(.*?)<\/u>/gi, "$1")
-      .replace(/<li>(.*?)<\/li>/gi, "- $1\n")
-      .replace(/<p>(.*?)<\/p>/gi, "$1\n\n")
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<hr\s*\/?>/gi, "---\n")
-      .replace(/<[^>]+>/g, "")
-      .trim();
-  } else if (note.type === "todo") {
-    (note.todos || []).forEach((t) => {
-      md += `- [${t.done ? "x" : " "}] ${t.text}`;
-      if (t.due) md += ` _(entro ${new Date(t.due).toLocaleDateString("it-IT")})_`;
-      md += "\n";
-    });
-  } else if (note.type === "reading") {
-    (note.quotes || []).forEach((q) => {
-      if (q.author || q.bookTitle) md += `> **${[q.author, q.bookTitle].filter(Boolean).join(" — ")}**\n`;
-      md += `> ${q.text}\n`;
-      if (q.comment) md += `\n${q.comment}\n`;
-      md += "\n---\n\n";
-    });
-  } else if (note.type === "meeting") {
-    md += (note.content || "").replace(/<[^>]+>/g, "").trim() + "\n\n";
-    if ((note.actions || []).length > 0) {
-      md += "## Azioni\n";
-      (note.actions || []).forEach((a) => {
-        md += `- [${a.done ? "x" : " "}] ${a.text}`;
-        if (a.due) md += ` _(entro ${new Date(a.due).toLocaleDateString("it-IT")})_`;
-        md += "\n";
-      });
-    }
-  } else if (note.type === "journal") {
-    (note.entries || []).sort((a, b) => b.date.localeCompare(a.date)).forEach((e) => {
-      const d = new Date(e.date + "T12:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-      md += `## ${d}\n\n${e.content || ""}\n\n---\n\n`;
-    });
-  }
-  return md;
-}
-
-function noteToTxt(note) {
-  return noteToMarkdown(note)
-    .replace(/^#+\s/gm, "")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/_(.*?)_/g, "$1")
-    .replace(/^- /gm, "• ")
-    .replace(/^> /gm, "  ");
-}
-
-function downloadFile(content, filename, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
-
-function slugify(str) {
-  return (str || "nota").toLowerCase().replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
-}
-
-function ExportImportPanel({ notes, folders, onImport, onClose, onSaveApiKey, currentApiKey, onSaveOpenaiKey, currentOpenaiKey }) {
-  const [importError, setImportError] = useState(null);
-  const [importSuccess, setImportSuccess] = useState(false);
-  const [localApiKey, setLocalApiKey] = useState(currentApiKey || '');
-  const [apiKeySaved, setApiKeySaved] = useState(false);
-  const [localOpenaiKey, setLocalOpenaiKey] = useState(currentOpenaiKey || '');
-  const [openaiKeySaved, setOpenaiKeySaved] = useState(false);
-  const fileInputRef = useRef();
-
-  const exportAllJSON = () => {
-    const data = { version: 1, exportedAt: new Date().toISOString(), notes, folders };
-    downloadFile(JSON.stringify(data, null, 2), `notes-backup-${new Date().toISOString().slice(0,10)}.json`, "application/json");
-  };
-
-  const exportAllMarkdown = () => {
-    // Export as a single .md file with all notes separated by ---
-    const md = notes.map((n) => noteToMarkdown(n)).join("\n\n---\n\n");
-    downloadFile(md, `notes-export-${new Date().toISOString().slice(0,10)}.md`, "text/markdown");
-  };
-
-  const exportAllTxt = () => {
-    const txt = notes.map((n) => noteToTxt(n)).join("\n\n══════════════════════\n\n");
-    downloadFile(txt, `notes-export-${new Date().toISOString().slice(0,10)}.txt`, "text/plain");
-  };
-
-  const handleImport = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImportError(null); setImportSuccess(false);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        if (!data.notes || !Array.isArray(data.notes)) throw new Error("Formato non valido");
-        onImport(data.notes, data.folders || []);
-        setImportSuccess(true);
-      } catch (err) {
-        setImportError(err.message || "Errore nel file");
+  const handle = async () => {
+    setError(null); setMessage(null); setLoading(true);
+    try {
+      if (mode === "login") {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      } else if (mode === "signup") {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        setMessage("Account creato! Puoi accedere ora.");
+        setMode("login");
+      } else {
+        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        if (error) throw error;
+        setMessage("Email inviata — controlla la posta.");
       }
-    };
-    reader.readAsText(file);
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
   };
 
-  const btnStyle = {
-    width: "100%", border: "1px solid #e0d8cc", borderRadius: "7px",
-    padding: "9px 14px", cursor: "pointer", fontFamily: "'DM Mono', monospace",
-    fontSize: "11px", color: "#6b5e4e", background: "#fff",
-    display: "flex", alignItems: "center", gap: "8px",
-    transition: "all 0.15s", textAlign: "left",
+  const inputStyle = {
+    width: "100%", padding: "11px 14px", border: "1px solid #d8d0c4",
+    borderRadius: "8px", fontFamily: "'Lora', serif", fontSize: "15px",
+    color: "#2c2416", background: "#fff", outline: "none", boxSizing: "border-box",
+    marginBottom: "12px",
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} />
-      <div style={{ position: "relative", background: "#fff", borderRadius: "14px", padding: "28px 28px 24px", width: "min(380px, 92vw)", boxShadow: "0 12px 48px rgba(0,0,0,0.18)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "22px" }}>
-          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "18px", fontWeight: "700", color: "#2c2416" }}>Export / Import</div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "20px", color: "#b0a898" }}>×</button>
-        </div>
-
-        {/* Export all */}
-        <div style={{ marginBottom: "20px" }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#8b7355", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "10px" }}>
-            Esporta tutte le note ({notes.length})
+    <div style={{ minHeight: "100vh", background: "#f5f0e8", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+      <div style={{ width: "100%", maxWidth: "380px" }}>
+        <div style={{ textAlign: "center", marginBottom: "36px" }}>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "36px", fontWeight: "700", color: "#2c2416" }}>
+            Note<span style={{ color: "#c4a882" }}>S</span>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-            <button style={btnStyle} onClick={exportAllJSON}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "#faf7f2"; e.currentTarget.style.borderColor = "#c4a882"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e0d8cc"; }}>
-              <span style={{ fontSize: "16px" }}>📦</span>
-              <div><div style={{ fontWeight: "500" }}>JSON</div><div style={{ fontSize: "10px", color: "#b0a898" }}>Backup completo — reimportabile</div></div>
-            </button>
-            <button style={btnStyle} onClick={exportAllMarkdown}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "#faf7f2"; e.currentTarget.style.borderColor = "#c4a882"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e0d8cc"; }}>
-              <span style={{ fontSize: "16px" }}>📝</span>
-              <div><div style={{ fontWeight: "500" }}>Markdown</div><div style={{ fontSize: "10px", color: "#b0a898" }}>Per Obsidian, Bear, Typora</div></div>
-            </button>
-            <button style={btnStyle} onClick={exportAllTxt}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "#faf7f2"; e.currentTarget.style.borderColor = "#c4a882"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.borderColor = "#e0d8cc"; }}>
-              <span style={{ fontSize: "16px" }}>📄</span>
-              <div><div style={{ fontWeight: "500" }}>TXT</div><div style={{ fontSize: "10px", color: "#b0a898" }}>Testo semplice, universale</div></div>
-            </button>
+          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#9a8f82", marginTop: "6px" }}>
+            le tue idee, sempre con te
           </div>
         </div>
 
-        <div style={{ borderTop: "1px solid #f0ede8", marginBottom: "20px" }} />
-
-        {/* Audio API Key */}
-        <div style={{ marginBottom: "20px" }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#8b7355", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "10px" }}>
-            🎙 API Key per note audio
+        <div style={{ background: "#fff", borderRadius: "14px", padding: "28px 28px 24px", boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "18px", fontWeight: "600", color: "#2c2416", marginBottom: "20px" }}>
+            {mode === "login" ? "Accedi" : mode === "signup" ? "Crea account" : "Reset password"}
           </div>
-          <input type="password" value={localApiKey} onChange={(e) => setLocalApiKey(e.target.value)}
-            placeholder="sk-ant-..."
-            style={{ width: "100%", padding: "8px 12px", border: "1px solid #e0d8cc", borderRadius: "7px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#2c2416", outline: "none", boxSizing: "border-box", marginBottom: "7px" }}
-          />
-          <button onClick={() => { onSaveApiKey(localApiKey); setApiKeySaved(true); setTimeout(() => setApiKeySaved(false), 2000); }}
-            style={{ background: "#8b7355", border: "none", borderRadius: "6px", padding: "6px 16px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "white" }}>
-            {apiKeySaved ? "✓ salvata" : "Salva"}
+
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email" style={inputStyle}
+            onKeyDown={(e) => e.key === "Enter" && handle()} />
+
+          {mode !== "forgot" && (
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password" style={inputStyle}
+              onKeyDown={(e) => e.key === "Enter" && handle()} />
+          )}
+
+          {error && <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#c04040", marginBottom: "12px" }}>{error}</div>}
+          {message && <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#5a9060", marginBottom: "12px" }}>{message}</div>}
+
+          <button onClick={handle} disabled={loading}
+            style={{ width: "100%", background: "#2c2416", border: "none", borderRadius: "8px", padding: "12px", cursor: loading ? "not-allowed" : "pointer", fontFamily: "'DM Mono', monospace", fontSize: "13px", color: "#f0e8d8", opacity: loading ? 0.7 : 1, marginBottom: "16px" }}>
+            {loading ? "..." : mode === "login" ? "Accedi" : mode === "signup" ? "Registrati" : "Invia email"}
           </button>
-          <div style={{ marginTop: "6px", fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#b0a898" }}>
-            La chiave è salvata solo in locale nel tuo browser.
-          </div>
-        </div>
 
-        {/* OpenAI key for Whisper */}
-        <div style={{ marginBottom: "20px" }}>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#8b7355", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "10px" }}>
-            🎙 OpenAI Key (Whisper — trascrizione)
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", alignItems: "center" }}>
+            {mode === "login" && <>
+              <button onClick={() => { setMode("signup"); setError(null); }}
+                style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#8b7355", textDecoration: "underline" }}>
+                Crea un account
+              </button>
+              <button onClick={() => { setMode("forgot"); setError(null); }}
+                style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#b0a898", textDecoration: "underline" }}>
+                Password dimenticata?
+              </button>
+            </>}
+            {mode !== "login" && (
+              <button onClick={() => { setMode("login"); setError(null); setMessage(null); }}
+                style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#8b7355", textDecoration: "underline" }}>
+                Torna al login
+              </button>
+            )}
           </div>
-          <input type="password" value={localOpenaiKey} onChange={(e) => setLocalOpenaiKey(e.target.value)}
-            placeholder="sk-..."
-            style={{ width: "100%", padding: "8px 12px", border: "1px solid #e0d8cc", borderRadius: "7px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#2c2416", outline: "none", boxSizing: "border-box", marginBottom: "7px" }}
-          />
-          <button onClick={() => { onSaveOpenaiKey(localOpenaiKey); setOpenaiKeySaved(true); setTimeout(() => setOpenaiKeySaved(false), 2000); }}
-            style={{ background: "#8b7355", border: "none", borderRadius: "6px", padding: "6px 16px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "white" }}>
-            {openaiKeySaved ? "✓ salvata" : "Salva"}
-          </button>
-          <div style={{ marginTop: "6px", fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#b0a898" }}>
-            Usata solo per la trascrizione vocale. Salvata in locale.
-          </div>
-        </div>
-
-        <div style={{ borderTop: "1px solid #f0ede8", marginBottom: "20px" }} />
-
-        {/* Import */}
-        <div>
-          <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#8b7355", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "10px" }}>
-            Importa da JSON
-          </div>
-          <input ref={fileInputRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
-          <button style={{ ...btnStyle, borderStyle: "dashed" }} onClick={() => fileInputRef.current?.click()}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "#faf7f2"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; }}>
-            <span style={{ fontSize: "16px" }}>📂</span>
-            <div><div style={{ fontWeight: "500" }}>Seleziona file .json</div><div style={{ fontSize: "10px", color: "#b0a898" }}>Le note esistenti verranno mantenute</div></div>
-          </button>
-          {importError && <div style={{ marginTop: "8px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#c04040" }}>⚠ {importError}</div>}
-          {importSuccess && <div style={{ marginTop: "8px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#5a9060" }}>✓ Importazione completata</div>}
         </div>
       </div>
-    </div>
-  );
-}
-
-
-// ─── Export single note button ────────────────────────────────────────────────
-
-function ExportNoteButton({ note }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef();
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  if (!note) return null;
-  const name = slugify(note.title);
-
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button onClick={() => setOpen((v) => !v)}
-        title="Esporta questa nota"
-        style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#b0a898", padding: "2px 4px" }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = "#8b7355")}
-        onMouseLeave={(e) => (e.currentTarget.style.color = "#b0a898")}>
-        ↑ esporta
-      </button>
-      {open && (
-        <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", background: "#fff", border: "1px solid #e0d8cc", borderRadius: "8px", boxShadow: "0 4px 20px rgba(0,0,0,0.12)", zIndex: 300, minWidth: "160px", overflow: "hidden" }}>
-          {[
-            { label: "📦 JSON",     action: () => downloadFile(JSON.stringify(note, null, 2), `${name}.json`, "application/json") },
-            { label: "📝 Markdown", action: () => downloadFile(noteToMarkdown(note), `${name}.md`, "text/markdown") },
-            { label: "📄 TXT",      action: () => downloadFile(noteToTxt(note), `${name}.txt`, "text/plain") },
-          ].map(({ label, action }) => (
-            <div key={label} onMouseDown={() => { action(); setOpen(false); }}
-              style={{ padding: "9px 14px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#6b5e4e" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#faf7f2")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
-              {label}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -3143,6 +2910,31 @@ export default function NotesApp() {
   }, []);
 
   // ── Pull from Supabase on login ──
+  // ── Realtime subscription ──
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel("notes-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
+        async () => {
+          const remote = await pullFromSupabase(user.id);
+          if (!remote) return;
+          setNotes((local) => {
+            const merged = [...local];
+            remote.notes.forEach((rn) => {
+              const idx = merged.findIndex((ln) => ln.id === rn.id);
+              if (idx === -1) merged.push(rn);
+              else if (new Date(rn.updatedAt) > new Date(merged[idx].updatedAt)) merged[idx] = rn;
+            });
+            return merged.filter((n) => !n.deletedAt);
+          });
+          if (remote.folders.length > 0) setFolders(remote.folders);
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [user]);
+
   useEffect(() => {
     if (!user) return;
     pullFromSupabase(user.id).then((remote) => {
@@ -3423,7 +3215,7 @@ export default function NotesApp() {
               {listView === "cards" ? "⊞" : "☰"}
             </button>
           )}
-          {!isMobile && (
+          {!isMobile && !isTablet && (
             <button onClick={() => setSidebarOpen((v) => !v)} title={sidebarOpen ? "Nascondi sidebar" : "Mostra sidebar"}
               style={{ background: "none", border: "none", cursor: "pointer", fontSize: "12px", color: "#b0a898", fontFamily: "'DM Mono', monospace", padding: "2px 4px" }}>
               {sidebarOpen ? "◀" : "▶"}
