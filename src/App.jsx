@@ -80,7 +80,7 @@ function rowsToNote(row, todos, quotes) {
 async function syncNoteToSupabase(note, userId) {
   try {
     const { row, todos, quotes } = noteToRows(note, userId);
-    console.log(`[sync] type=${note.type} title="${note.title}" quotes=${quotes.length} todos=${todos.length}`);
+
     await supabase.from("notes").upsert(row, { onConflict: "id" });
     // Always sync todos
     await supabase.from("todos").delete().eq("note_id", note.id);
@@ -90,7 +90,7 @@ async function syncNoteToSupabase(note, userId) {
     if (quotes.length > 0) {
       const { error } = await supabase.from("quotes").insert(quotes);
       if (error) console.warn("Quotes insert error:", error);
-      else console.log(`[sync] quotes inserted: ${quotes.length}`);
+
     }
   } catch (e) { console.warn("Sync error:", e); }
 }
@@ -131,7 +131,7 @@ async function pullFromSupabase(userId) {
 
 const SAMPLE_NOTES = [
   {
-    id: "1",
+    id: "a3c2553a-1322-4637-a46d-367f714bf505",
     title: "Benvenuto in NoteS",
     type: "text",
     folder: "Generale",
@@ -141,7 +141,7 @@ const SAMPLE_NOTES = [
     updatedAt: new Date("2024-01-15").toISOString(),
   },
   {
-    id: "2",
+    id: "4acba2db-be5a-4565-81ab-361afa1ecd0f",
     title: "Lista della spesa",
     type: "todo",
     folder: "Personale",
@@ -157,7 +157,7 @@ const SAMPLE_NOTES = [
     updatedAt: new Date("2024-01-16").toISOString(),
   },
   {
-    id: "3",
+    id: "1a59ef5b-a6f9-4db2-b3ab-114193cdc0ea",
     title: "Immagine, merce e spettacolo",
     type: "reading",
     folder: "Letture",
@@ -202,12 +202,12 @@ const SAMPLE_NOTES = [
 const FOLDER_COLORS = ["#c4a882", "#8ba888", "#8899bb", "#b87e7e", "#9b8ab8", "#b8a84a", "#7eaab8"];
 
 const FOLDERS = [
-  { id: "f1", name: "Generale",          color: "#c4a882" },
-  { id: "f2", name: "Personale",          color: "#8ba888" },
-  { id: "f3", name: "Lavoro",             color: "#8899bb" },
-  { id: "f4", name: "Letture",            color: "#b87e7e" },
-  { id: "f5", name: "Letture/Filosofia",  color: "#b87e7e" },
-  { id: "f6", name: "Letture/Narrativa",  color: "#b87e7e" },
+  { id: "c7890f96-f6c2-41cf-8fd9-834800eea18c", name: "Generale",          color: "#c4a882" },
+  { id: "2aa8b2b1-9a41-4898-9045-8e2544bf1fbd", name: "Personale",          color: "#8ba888" },
+  { id: "cf822c58-f2a3-41cc-b9f4-d06e2ae09b83", name: "Lavoro",             color: "#8899bb" },
+  { id: "2628272e-b0f7-418f-bbc1-6e667452169e", name: "Letture",            color: "#b87e7e" },
+  { id: "c983b385-fa5a-4e47-b0ec-edcb458916c8", name: "Letture/Filosofia",  color: "#b87e7e" },
+  { id: "84d1177a-8e4d-4c86-95a7-e84ae896396f", name: "Letture/Narrativa",  color: "#b87e7e" },
 ];
 
 const TEMPLATES = [
