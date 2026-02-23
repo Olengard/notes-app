@@ -2825,6 +2825,90 @@ function AuthScreen() {
   );
 }
 
+
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function slugify(str) {
+  return (str || "nota").toLowerCase().replace(/[^a-z0-9]+/gi, "-").slice(0, 40);
+}
+
+function downloadFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function noteToMarkdown(note) {
+  const date = new Date(note.updatedAt).toLocaleDateString("it-IT");
+  const tags = (note.tags || []).map((t) => `#${t}`).join(" ");
+  let md = `# ${note.title || "Senza titolo"}\n`;
+  if (tags) md += `${tags}\n`;
+  md += `_${date}_\n\n`;
+  if (note.type === "text" || note.type === "quick") {
+    md += (note.content || "").replace(/<strong>(.*?)<\/strong>/gi, "**$1**").replace(/<em>(.*?)<\/em>/gi, "_$1_").replace(/<li>(.*?)<\/li>/gi, "- $1\n").replace(/<p>(.*?)<\/p>/gi, "$1\n\n").replace(/<br\s*\/?>/gi, "\n").replace(/<hr\s*\/?>/gi, "---\n").replace(/<[^>]+>/g, "").trim();
+  } else if (note.type === "todo") {
+    (note.todos || []).forEach((t) => { md += `- [${t.done ? "x" : " "}] ${t.text}`; if (t.due) md += ` _(entro ${new Date(t.due).toLocaleDateString("it-IT")})_`; md += "\n"; });
+  } else if (note.type === "reading") {
+    (note.quotes || []).forEach((q) => { if (q.author || q.bookTitle) md += `> **${[q.author, q.bookTitle].filter(Boolean).join(" — ")}**\n`; md += `> ${q.text}\n`; if (q.comment) md += `\n${q.comment}\n`; md += "\n---\n\n"; });
+  } else if (note.type === "meeting") {
+    md += (note.content || "").replace(/<[^>]+>/g, "").trim() + "\n\n";
+    if ((note.actions || []).length > 0) { md += "## Azioni\n"; (note.actions || []).forEach((a) => { md += `- [${a.done ? "x" : " "}] ${a.text}`; if (a.due) md += ` _(entro ${new Date(a.due).toLocaleDateString("it-IT")})_`; md += "\n"; }); }
+  } else if (note.type === "journal") {
+    (note.entries || []).sort((a, b) => b.date.localeCompare(a.date)).forEach((e) => { const d = new Date(e.date + "T12:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); md += `## ${d}\n\n${e.content || ""}\n\n---\n\n`; });
+  }
+  return md;
+}
+
+function noteToTxt(note) {
+  return noteToMarkdown(note).replace(/^#+\s/gm, "").replace(/\*\*(.*?)\*\*/g, "$1").replace(/_(.*?)_/g, "$1").replace(/^- /gm, "• ").replace(/^> /gm, "  ");
+}
+
+// ─── Export single note button ────────────────────────────────────────────────
+
+function ExportNoteButton({ note }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef();
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  if (!note) return null;
+  const name = slugify(note.title);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button onClick={() => setOpen((v) => !v)} title="Esporta questa nota"
+        style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#b0a898", padding: "2px 4px" }}
+        onMouseEnter={(e) => (e.currentTarget.style.color = "#8b7355")}
+        onMouseLeave={(e) => (e.currentTarget.style.color = "#b0a898")}>
+        ↑ esporta
+      </button>
+      {open && (
+        <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", background: "#fff", border: "1px solid #e0d8cc", borderRadius: "8px", boxShadow: "0 4px 20px rgba(0,0,0,0.12)", zIndex: 300, minWidth: "160px", overflow: "hidden" }}>
+          {[
+            { label: "📦 JSON",     action: () => downloadFile(JSON.stringify(note, null, 2), `${name}.json`, "application/json") },
+            { label: "📝 Markdown", action: () => downloadFile(noteToMarkdown(note), `${name}.md`, "text/markdown") },
+            { label: "📄 TXT",      action: () => downloadFile(noteToTxt(note), `${name}.txt`, "text/plain") },
+          ].map(({ label, action }) => (
+            <div key={label} onMouseDown={() => { action(); setOpen(false); }}
+              style={{ padding: "9px 14px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#6b5e4e" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#faf7f2")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+              {label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Editor Delete Button ─────────────────────────────────────────────────────
 
 function EditorDeleteButton({ activeNote, deleteNote, isMobile, setMobileView }) {
