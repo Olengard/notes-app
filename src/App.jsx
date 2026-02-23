@@ -3035,22 +3035,16 @@ export default function NotesApp() {
         async () => {
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
-          setNotes((local) => {
-            const merged = [...local];
-            remote.notes.forEach((rn) => {
-              const idx = merged.findIndex((ln) => ln.id === rn.id);
-              if (idx === -1) { merged.push(rn); return; }
-              const ln = merged[idx];
-              const remoteNewer = new Date(rn.updatedAt) >= new Date(ln.updatedAt);
-              const localMissingData =
-                (rn.type === "reading" && (rn.quotes  || []).length > (ln.quotes  || []).length) ||
-                (rn.type === "meeting" && (rn.actions || []).length > (ln.actions || []).length) ||
-                (rn.type === "journal" && (rn.entries || []).length > (ln.entries || []).length) ||
-                (rn.type === "todo"    && (rn.todos   || []).length > (ln.todos   || []).length);
-              if (remoteNewer || localMissingData) merged[idx] = rn;
-            });
-            return merged.filter((n) => !n.deletedAt);
-          });
+          // Replace everything from remote — source of truth is Supabase
+          setNotes(remote.notes);
+          if (remote.folders.length > 0) setFolders(remote.folders);
+        }
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "quotes", filter: `user_id=eq.${user.id}` },
+        async () => {
+          const remote = await pullFromSupabase(user.id);
+          if (!remote) return;
+          setNotes(remote.notes);
           if (remote.folders.length > 0) setFolders(remote.folders);
         }
       )
