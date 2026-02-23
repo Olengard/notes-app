@@ -80,6 +80,7 @@ function rowsToNote(row, todos, quotes) {
 async function syncNoteToSupabase(note, userId) {
   try {
     const { row, todos, quotes } = noteToRows(note, userId);
+    console.log(`[sync] type=${note.type} title="${note.title}" quotes=${quotes.length} todos=${todos.length}`);
     await supabase.from("notes").upsert(row, { onConflict: "id" });
     // Always sync todos
     await supabase.from("todos").delete().eq("note_id", note.id);
@@ -89,6 +90,7 @@ async function syncNoteToSupabase(note, userId) {
     if (quotes.length > 0) {
       const { error } = await supabase.from("quotes").insert(quotes);
       if (error) console.warn("Quotes insert error:", error);
+      else console.log(`[sync] quotes inserted: ${quotes.length}`);
     }
   } catch (e) { console.warn("Sync error:", e); }
 }
