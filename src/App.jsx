@@ -3070,6 +3070,7 @@ export default function NotesApp() {
       )
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
         async () => {
+          await new Promise((r) => setTimeout(r, 2000));
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
           setNotes(remote.notes.filter((n) => !deletedIdsRef.current.has(n.id)));
@@ -3078,15 +3079,6 @@ export default function NotesApp() {
       )
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
         async () => {
-          const remote = await pullFromSupabase(user.id);
-          if (!remote) return;
-          setNotes(remote.notes.filter((n) => !deletedIdsRef.current.has(n.id)));
-          if (remote.folders.length > 0) setFolders(remote.folders);
-        }
-      )
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "quotes", filter: `user_id=eq.${user.id}` },
-        async () => {
-          await new Promise((r) => setTimeout(r, 2000));
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
           setNotes(remote.notes.filter((n) => !deletedIdsRef.current.has(n.id)));
