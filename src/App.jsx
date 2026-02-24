@@ -101,8 +101,8 @@ async function deleteNoteFromSupabase(noteId) {
       supabase.from("todos").delete().eq("note_id", noteId),
       supabase.from("quotes").delete().eq("note_id", noteId),
     ]);
-    const { error, count } = await supabase.from("notes").delete().eq("id", noteId).select();
-    console.log("[delete]", noteId, "error:", error, "count:", count);
+    const { data, error } = await supabase.from("notes").delete().eq("id", noteId).select("id");
+    console.log("[delete]", noteId, "error:", error, "deleted rows:", data);
   }
   catch (e) { console.warn("Delete sync error:", e); }
 }
