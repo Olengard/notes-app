@@ -3207,7 +3207,7 @@ export default function NotesApp() {
       setTimeout(() => deletedIdsRef.current.delete(id), 27000);
     }, 3000);
     setActiveNote((prev) => prev?.id === id ? null : prev);
-    if (user) deleteNoteFromSupabase(id);
+    console.log('[deleteNote] user:', user?.id, 'noteId:', id); if (user) deleteNoteFromSupabase(id); else console.warn('[deleteNote] no user!');
   };
 
   const addFolder = () => {
