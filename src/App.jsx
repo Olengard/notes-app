@@ -3108,7 +3108,9 @@ export default function NotesApp() {
     setSaveStatus("saving");
     const t = setTimeout(() => {
       try {
-        localStorage.setItem(LS_NOTES,   JSON.stringify(notes.filter((n) => !n._deleted)));
+        const toSave = notes.filter((n) => !n._deleted);
+        console.log("[ls save] notes:", toSave.length, "deleted filtered:", notes.length - toSave.length);
+        localStorage.setItem(LS_NOTES, JSON.stringify(toSave));
         localStorage.setItem(LS_FOLDERS, JSON.stringify(folders));
         setSaveStatus("saved");
       } catch { setSaveStatus("error"); }
