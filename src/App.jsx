@@ -2991,6 +2991,7 @@ function EditorDeleteButton({ activeNote, deleteNote, isMobile, setMobileView })
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 const LS_NOTES   = "notes_app_v1";
+const LS_DELETED = "notes_deleted_v1";
 const LS_FOLDERS = "notes_folders_v1";
 
 function loadLS(key, fallback) {
@@ -2999,7 +3000,19 @@ function loadLS(key, fallback) {
 }
 
 export default function NotesApp() {
-  const [notes,   setNotes]   = useState(() => loadLS(LS_NOTES,   SAMPLE_NOTES));
+  const [notes,   setNotes]   = useState(() => {
+    try {
+      const deleted = JSON.parse(localStorage.getItem(LS_DELETED) || "[]");
+      const cutoff = Date.now() - 60000; // ignore deletions older than 60s
+      const recentDeleted = new Set(deleted.filter((d) => d.deletedAt > cutoff).map((d) => d.id));
+      // Clean up old entries
+      const fresh = deleted.filter((d) => d.deletedAt > Date.now() - 3600000);
+      localStorage.setItem(LS_DELETED, JSON.stringify(fresh));
+      return loadLS(LS_NOTES, SAMPLE_NOTES).filter((n) => !recentDeleted.has(n.id));
+    } catch {
+      return loadLS(LS_NOTES, SAMPLE_NOTES);
+    }
+  });
   const [folders, setFolders] = useState(() => loadLS(LS_FOLDERS, FOLDERS));
   const [activeFolder, setActiveFolder] = useState("all");
   const [activeNote,   setActiveNote]   = useState(null);
@@ -3215,6 +3228,12 @@ export default function NotesApp() {
   const deleteNote = (id) => {
     // Add to deletedIds FIRST so realtime handlers ignore it immediately
     deletedIdsRef.current.add(id);
+    // Persist deleted ID to localStorage so it survives page refresh
+    try {
+      const deleted = JSON.parse(localStorage.getItem(LS_DELETED) || "[]");
+      deleted.push({ id, deletedAt: Date.now() });
+      localStorage.setItem(LS_DELETED, JSON.stringify(deleted));
+    } catch {}
     setNotes((prev) => prev.map((n) => n.id === id ? { ...n, _deleted: true } : n));
     setActiveNote((prev) => prev?.id === id ? null : prev);
     if (user) deleteNoteFromSupabase(id);
