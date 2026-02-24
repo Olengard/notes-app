@@ -96,7 +96,14 @@ async function syncNoteToSupabase(note, userId) {
 }
 
 async function deleteNoteFromSupabase(noteId) {
-  try { await supabase.from("notes").delete().eq("id", noteId); }
+  try {
+    // Delete child records first to avoid realtime triggering a pull mid-delete
+    await Promise.all([
+      supabase.from("todos").delete().eq("note_id", noteId),
+      supabase.from("quotes").delete().eq("note_id", noteId),
+    ]);
+    await supabase.from("notes").delete().eq("id", noteId);
+  }
   catch (e) { console.warn("Delete sync error:", e); }
 }
 
@@ -3033,6 +3040,8 @@ export default function NotesApp() {
   }, []);
 
   // ── Pull from Supabase on login ──
+  const deletedIdsRef = useRef(new Set());
+
   // ── Realtime subscription ──
   useEffect(() => {
     if (!user) return;
@@ -3040,8 +3049,6 @@ export default function NotesApp() {
       .channel("notes-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
         async () => {
-          // Wait for quotes/todos to be saved too before pulling
-          await new Promise((r) => setTimeout(r, 1500));
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
           setNotes(remote.notes.filter((n) => !deletedIdsRef.current.has(n.id)));
@@ -3050,7 +3057,7 @@ export default function NotesApp() {
       )
       .on("postgres_changes", { event: "*", schema: "public", table: "quotes", filter: `user_id=eq.${user.id}` },
         async () => {
-          await new Promise((r) => setTimeout(r, 500));
+          await new Promise((r) => setTimeout(r, 1500));
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
           setNotes(remote.notes.filter((n) => !deletedIdsRef.current.has(n.id)));
@@ -3198,7 +3205,6 @@ export default function NotesApp() {
     }
   };
 
-  const deletedIdsRef = useRef(new Set());
   const deleteNote = (id) => {
     deletedIdsRef.current.add(id);
     setNotes((prev) => prev.map((n) => n.id === id ? { ...n, _deleted: true } : n));
