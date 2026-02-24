@@ -97,12 +97,12 @@ async function syncNoteToSupabase(note, userId) {
 
 async function deleteNoteFromSupabase(noteId) {
   try {
-    // Delete child records first to avoid realtime triggering a pull mid-delete
     await Promise.all([
       supabase.from("todos").delete().eq("note_id", noteId),
       supabase.from("quotes").delete().eq("note_id", noteId),
     ]);
-    await supabase.from("notes").delete().eq("id", noteId);
+    const { error, count } = await supabase.from("notes").delete().eq("id", noteId).select();
+    console.log("[delete]", noteId, "error:", error, "count:", count);
   }
   catch (e) { console.warn("Delete sync error:", e); }
 }
