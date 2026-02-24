@@ -3099,17 +3099,24 @@ export default function NotesApp() {
     if (!user) return;
     pullFromSupabase(user.id).then((remote) => {
       if (!remote) return;
-      // Supabase is source of truth — use remote notes, enriched with any local-only unsaved notes
+      // Supabase is source of truth — filter out recently deleted notes
       setNotes((local) => {
-        const remoteMap = Object.fromEntries(remote.notes.map((n) => [n.id, n]));
-        // Keep local notes that aren't on Supabase yet (created in last 10s, not yet synced)
-        const localOnlyRecent = local.filter((n) => {
-          if (remoteMap[n.id]) return false;
-          if (n._deleted) return false;
-          const age = Date.now() - new Date(n.updatedAt).getTime();
-          return age < 10000; // created/modified in last 10 seconds
-        });
-        return [...remote.notes, ...localOnlyRecent];
+        try {
+          const deleted = JSON.parse(localStorage.getItem(LS_DELETED) || "[]");
+          const cutoff = Date.now() - 60000;
+          const recentDeleted = new Set(deleted.filter((d) => d.deletedAt > cutoff).map((d) => d.id));
+          const remoteMap = Object.fromEntries(remote.notes.map((n) => [n.id, n]));
+          const localOnlyRecent = local.filter((n) => {
+            if (remoteMap[n.id]) return false;
+            if (n._deleted) return false;
+            if (recentDeleted.has(n.id)) return false;
+            const age = Date.now() - new Date(n.updatedAt).getTime();
+            return age < 10000;
+          });
+          return [...remote.notes.filter((n) => !recentDeleted.has(n.id)), ...localOnlyRecent];
+        } catch {
+          return remote.notes;
+        }
       });
       if (remote.folders.length > 0) setFolders(remote.folders);
     });
