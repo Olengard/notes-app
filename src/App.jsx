@@ -3061,9 +3061,11 @@ export default function NotesApp() {
       .channel("notes-realtime")
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
         (payload) => {
-          // Handle delete directly — don't pull, just remove from local state
           const deletedId = payload.old?.id;
-          if (deletedId) setNotes((prev) => prev.filter((n) => n.id !== deletedId));
+          if (deletedId) {
+            deletedIdsRef.current.add(deletedId);
+            setNotes((prev) => prev.filter((n) => n.id !== deletedId));
+          }
         }
       )
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
