@@ -3069,9 +3069,9 @@ export default function NotesApp() {
           if (remote.folders.length > 0) setFolders(remote.folders);
         }
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "quotes", filter: `user_id=eq.${user.id}` },
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "quotes", filter: `user_id=eq.${user.id}` },
         async () => {
-          await new Promise((r) => setTimeout(r, 1500));
+          await new Promise((r) => setTimeout(r, 2000));
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
           setNotes(remote.notes.filter((n) => !deletedIdsRef.current.has(n.id)));
@@ -3108,9 +3108,7 @@ export default function NotesApp() {
     setSaveStatus("saving");
     const t = setTimeout(() => {
       try {
-        const toSave = notes.filter((n) => !n._deleted);
-        console.log("[ls save] notes:", toSave.length, "deleted filtered:", notes.length - toSave.length);
-        localStorage.setItem(LS_NOTES, JSON.stringify(toSave));
+        localStorage.setItem(LS_NOTES, JSON.stringify(notes.filter((n) => !n._deleted)));
         localStorage.setItem(LS_FOLDERS, JSON.stringify(folders));
         setSaveStatus("saved");
       } catch { setSaveStatus("error"); }
@@ -3215,15 +3213,15 @@ export default function NotesApp() {
   };
 
   const deleteNote = (id) => {
+    // Add to deletedIds FIRST so realtime handlers ignore it immediately
     deletedIdsRef.current.add(id);
     setNotes((prev) => prev.map((n) => n.id === id ? { ...n, _deleted: true } : n));
-    setTimeout(() => {
-      setNotes((prev) => prev.filter((n) => n.id !== id));
-      // Keep in deletedIds for 30s to prevent realtime from restoring it
-      setTimeout(() => deletedIdsRef.current.delete(id), 27000);
-    }, 3000);
     setActiveNote((prev) => prev?.id === id ? null : prev);
     if (user) deleteNoteFromSupabase(id);
+    setTimeout(() => {
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+      setTimeout(() => deletedIdsRef.current.delete(id), 27000);
+    }, 3000);
   };
 
   const addFolder = () => {
