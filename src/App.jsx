@@ -101,8 +101,7 @@ async function deleteNoteFromSupabase(noteId) {
       supabase.from("todos").delete().eq("note_id", noteId),
       supabase.from("quotes").delete().eq("note_id", noteId),
     ]);
-    const { data, error } = await supabase.from("notes").delete().eq("id", noteId).select("id");
-    console.log("[delete]", noteId, "error:", error, "deleted rows:", data);
+    await supabase.from("notes").delete().eq("id", noteId);
   }
   catch (e) { console.warn("Delete sync error:", e); }
 }
@@ -3047,7 +3046,22 @@ export default function NotesApp() {
     if (!user) return;
     const channel = supabase
       .channel("notes-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
+        (payload) => {
+          // Handle delete directly — don't pull, just remove from local state
+          const deletedId = payload.old?.id;
+          if (deletedId) setNotes((prev) => prev.filter((n) => n.id !== deletedId));
+        }
+      )
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
+        async () => {
+          const remote = await pullFromSupabase(user.id);
+          if (!remote) return;
+          setNotes(remote.notes.filter((n) => !deletedIdsRef.current.has(n.id)));
+          if (remote.folders.length > 0) setFolders(remote.folders);
+        }
+      )
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
         async () => {
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
@@ -3207,7 +3221,7 @@ export default function NotesApp() {
       setTimeout(() => deletedIdsRef.current.delete(id), 27000);
     }, 3000);
     setActiveNote((prev) => prev?.id === id ? null : prev);
-    console.log('[deleteNote] user:', user?.id, 'noteId:', id); if (user) deleteNoteFromSupabase(id); else console.warn('[deleteNote] no user!');
+    if (user) deleteNoteFromSupabase(id);
   };
 
   const addFolder = () => {
