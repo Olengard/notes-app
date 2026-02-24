@@ -3072,24 +3072,17 @@ export default function NotesApp() {
     if (!user) return;
     pullFromSupabase(user.id).then((remote) => {
       if (!remote) return;
-      // Merge: remote wins if updated_at is newer, else keep local
+      // Supabase is source of truth — use remote notes, enriched with any local-only unsaved notes
       setNotes((local) => {
-        const localMap = Object.fromEntries(local.map((n) => [n.id, n]));
         const remoteMap = Object.fromEntries(remote.notes.map((n) => [n.id, n]));
-        const allIds = new Set([...Object.keys(localMap), ...Object.keys(remoteMap)]);
-        return [...allIds].map((id) => {
-          const l = localMap[id], r = remoteMap[id];
-          if (!l) return r;
-          if (!r) return l;
-          // Remote wins if newer, OR if local is missing type-specific data
-          const remoteNewer = new Date(r.updatedAt) > new Date(l.updatedAt);
-          const localMissingData =
-            (r.type === "reading" && (r.quotes || []).length > (l.quotes || []).length) ||
-            (r.type === "meeting" && (r.actions || []).length > (l.actions || []).length) ||
-            (r.type === "journal" && (r.entries || []).length > (l.entries || []).length) ||
-            (r.type === "todo"    && (r.todos   || []).length > (l.todos   || []).length);
-          return (remoteNewer || localMissingData) ? r : l;
+        // Keep local notes that aren't on Supabase yet (created in last 10s, not yet synced)
+        const localOnlyRecent = local.filter((n) => {
+          if (remoteMap[n.id]) return false;
+          if (n._deleted) return false;
+          const age = Date.now() - new Date(n.updatedAt).getTime();
+          return age < 10000; // created/modified in last 10 seconds
         });
+        return [...remote.notes, ...localOnlyRecent];
       });
       if (remote.folders.length > 0) setFolders(remote.folders);
     });
