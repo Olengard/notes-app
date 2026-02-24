@@ -844,9 +844,13 @@ function ReadingEditor({ note, folders, onUpdate, allNotes = [], onPreview, audi
   const groupedQuotes = () => {
     const groups = {};
     quotes.forEach((q, idx) => {
-      const key = [q.author, q.bookTitle].filter(Boolean).join(" · ") || "Senza fonte";
-      if (!groups[key]) groups[key] = [];
-      groups[key].push({ ...q, _idx: idx });
+      const normalize = (s) => (s || "").trim().replace(/\s+/g, " ");
+      const normAuthor = normalize(q.author);
+      const normBook = normalize(q.bookTitle);
+      const displayKey = [q.author, q.bookTitle].filter(Boolean).join(" · ") || "Senza fonte";
+      const groupKey = [normAuthor, normBook].filter(Boolean).join(" · ").toLowerCase() || "senza fonte";
+      if (!groups[groupKey]) groups[groupKey] = { displayKey, items: [] };
+      groups[groupKey].items.push({ ...q, _idx: idx });
     });
     return groups;
   };
@@ -986,10 +990,10 @@ function ReadingEditor({ note, folders, onUpdate, allNotes = [], onPreview, audi
                 display: "flex", alignItems: "center", gap: "8px",
               }}>
                 <span style={{ color: "#c4a882" }}>📖</span>
-                {key}
-                <span style={{ color: "#c0b8ae", marginLeft: "auto" }}>{group.length} cit.</span>
+                {group.displayKey}
+                <span style={{ color: "#c0b8ae", marginLeft: "auto" }}>{group.items.length} cit.</span>
               </div>
-              {group.map((q) => renderQuote(q, q._idx))}
+              {group.items.map((q) => renderQuote(q, q._idx))}
             </div>
           ))
         ) : (
@@ -3040,7 +3044,7 @@ export default function NotesApp() {
           await new Promise((r) => setTimeout(r, 1500));
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
-          setNotes(remote.notes);
+          setNotes(remote.notes.filter((n) => !deletedIdsRef.current.has(n.id)));
           if (remote.folders.length > 0) setFolders(remote.folders);
         }
       )
@@ -3049,7 +3053,7 @@ export default function NotesApp() {
           await new Promise((r) => setTimeout(r, 500));
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
-          setNotes(remote.notes);
+          setNotes(remote.notes.filter((n) => !deletedIdsRef.current.has(n.id)));
           if (remote.folders.length > 0) setFolders(remote.folders);
         }
       )
@@ -3194,8 +3198,15 @@ export default function NotesApp() {
     }
   };
 
+  const deletedIdsRef = useRef(new Set());
   const deleteNote = (id) => {
-    setNotes((prev) => prev.filter((n) => n.id !== id));
+    deletedIdsRef.current.add(id);
+    setNotes((prev) => prev.map((n) => n.id === id ? { ...n, _deleted: true } : n));
+    setTimeout(() => {
+      setNotes((prev) => prev.filter((n) => n.id !== id));
+      // Keep in deletedIds for 30s to prevent realtime from restoring it
+      setTimeout(() => deletedIdsRef.current.delete(id), 27000);
+    }, 3000);
     setActiveNote((prev) => prev?.id === id ? null : prev);
     if (user) deleteNoteFromSupabase(id);
   };
@@ -3367,7 +3378,7 @@ export default function NotesApp() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", borderBottom: "1px solid #e8e3db", background: "#fefcfa", flexShrink: 0 }}>
             {isMobile
               ? <button onClick={() => setMobileView("list")} style={{ background: "none", border: "none", cursor: "pointer", color: "#b0a898", fontSize: "13px", fontFamily: "'DM Mono', monospace" }}>‹ note</button>
-              : <button onClick={() => setListOpen((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", color: "#b0a898", fontSize: "13px", fontFamily: "'DM Mono', monospace" }}>{listOpen ? "‹ nascondi lista" : "› mostra lista"}</button>
+              : isTablet ? <span /> : <button onClick={() => setListOpen((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", color: "#b0a898", fontSize: "13px", fontFamily: "'DM Mono', monospace" }}>{listOpen ? "‹ nascondi" : "› lista"}</button>
             }
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: saveStatus === "saving" ? "#c4a882" : saveStatus === "error" ? "#c47a6a" : "#b0c8b0", transition: "color 0.3s" }}>
               {saveStatus === "saving" ? "salvataggio…" : saveStatus === "error" ? "⚠ errore" : "✓ salvato"}
@@ -3494,9 +3505,9 @@ export default function NotesApp() {
               <button onClick={() => setDrawerOpen((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", color: "#c4a882", fontSize: "18px" }}>☰</button>
               <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "13px", fontWeight: "700", color: "#f0e8d8", writingMode: "vertical-rl", letterSpacing: "1px" }}>N<span style={{ color: "#c4a882" }}>S</span></div>
             </div>
-            <div style={{ width: "260px", flexShrink: 0, borderRight: "1px solid #ddd8ce", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            {listOpen && <div style={{ width: "260px", flexShrink: 0, borderRight: "1px solid #ddd8ce", overflow: "hidden", display: "flex", flexDirection: "column" }}>
               {noteListJSX}
-            </div>
+            </div>}
             {editorJSX}
           </div>
         </>
