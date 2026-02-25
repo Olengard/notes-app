@@ -3059,7 +3059,7 @@ export default function NotesApp() {
     if (!user) return;
     const channel = supabase
       .channel("notes-realtime")
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "notes" },
         (payload) => {
           const deletedId = payload.old?.id;
           if (deletedId) {
