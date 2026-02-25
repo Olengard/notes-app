@@ -802,6 +802,234 @@ function QuoteCard({ quote, onUpdate, onDelete, dragHandleProps, isDragging }) {
 
 // ─── Reading Editor ───────────────────────────────────────────────────────────
 
+
+// ─── Reading Assistant ────────────────────────────────────────────────────────
+
+const READING_PROMPTS = [
+  { id: "themes",        label: "🔍 Temi comuni",           text: "Analizza queste citazioni e identifica i temi ricorrenti che le attraversano. Per ogni tema elenca le citazioni rilevanti." },
+  { id: "tensions",      label: "⚡ Tensioni e contraddizioni", text: "Individua tensioni, contraddizioni o dialettiche tra queste citazioni. Dove gli autori divergono o si contraddicono?" },
+  { id: "concepts",      label: "🧩 Raggruppa per concetto", text: "Proponi un raggruppamento alternativo delle citazioni basato sui concetti chiave, indipendentemente dall'autore o dal libro." },
+  { id: "narrative",     label: "🧵 Filo narrativo",         text: "Costruisci un filo narrativo o argomentativo che colleghi queste citazioni in una progressione logica o cronologica." },
+  { id: "tags",          label: "🏷 Suggerisci tag",         text: "Suggerisci tag tematici per ciascuna citazione. Rispondi in JSON: { citazioni: [{ id, testo_breve, tag_suggeriti }] }" },
+  { id: "synthesis",     label: "📝 Sintesi critica",        text: "Scrivi una breve sintesi critica che metta in dialogo queste citazioni, come se stessi scrivendo un'introduzione a un saggio." },
+];
+
+function ReadingAssistant({ quotes, noteTitle, apiKey, onApplyTags }) {
+  const [open,        setOpen]        = useState(false);
+  const [selectedPrompt, setSelectedPrompt] = useState(null);
+  const [customPrompt,   setCustomPrompt]   = useState("");
+  const [result,      setResult]      = useState(null);
+  const [loading,     setLoading]     = useState(false);
+  const [error,       setError]       = useState(null);
+  const [tagSuggestions, setTagSuggestions] = useState(null);
+
+  const analyze = async () => {
+    const prompt = customPrompt.trim() || selectedPrompt?.text;
+    if (!prompt) { setError("Scegli un'analisi o scrivi un prompt."); return; }
+    if (!apiKey)  { setError("API key Anthropic mancante — vai nelle impostazioni."); return; }
+    if (quotes.length === 0) { setError("Nessuna citazione da analizzare."); return; }
+
+    setLoading(true); setError(null); setResult(null); setTagSuggestions(null);
+
+    const quotesText = quotes.map((q, i) => {
+      const src = [q.author, q.bookTitle, q.chapter, q.page ? `p.${q.page}` : ""].filter(Boolean).join(", ");
+      return `[${i + 1}] ${src ? `(${src}) ` : ""}«${q.text}»${q.comment ? `
+Commento: ${q.comment}` : ""}`;
+    }).join("
+
+");
+
+    const systemPrompt = `Sei un assistente per l'analisi e l'organizzazione di note di lettura. 
+Stai analizzando le citazioni della nota "${noteTitle || "Senza titolo"}".
+Rispondi in italiano. Sii preciso, conciso e usa un registro intellettuale elevato.
+Quando citi una frase specifica usa il numero [N] per riferirla.`;
+
+    try {
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+        body: JSON.stringify({
+          model: "claude-opus-4-6",
+          max_tokens: 2000,
+          system: systemPrompt,
+          messages: [{ role: "user", content: `${prompt}
+
+CITAZIONI:
+
+${quotesText}` }],
+        }),
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text || "";
+
+      // Check if it's a tag suggestion response
+      if (selectedPrompt?.id === "tags" && !customPrompt.trim()) {
+        try {
+          const clean = text.replace(/```json|```/g, "").trim();
+          const parsed = JSON.parse(clean);
+          if (parsed.citazioni) { setTagSuggestions(parsed.citazioni); setResult(null); setLoading(false); return; }
+        } catch {}
+      }
+      setResult(text);
+    } catch (e) {
+      setError("Errore durante l'analisi: " + e.message);
+    }
+    setLoading(false);
+  };
+
+  const downloadHTML = () => {
+    const html = `<!DOCTYPE html>
+<html lang="it">
+<head><meta charset="UTF-8"><title>Analisi — ${noteTitle || "Nota"}</title>
+<style>
+  body { font-family: Georgia, serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #2c2416; line-height: 1.7; }
+  h1 { font-size: 24px; border-bottom: 2px solid #c4a882; padding-bottom: 10px; }
+  h2 { font-size: 18px; color: #6b5e4e; margin-top: 32px; }
+  p { margin: 12px 0; }
+  .meta { font-family: monospace; font-size: 12px; color: #9a8f82; margin-bottom: 32px; }
+  pre { white-space: pre-wrap; font-family: inherit; }
+</style>
+</head>
+<body>
+<h1>${noteTitle || "Analisi nota di lettura"}</h1>
+<div class="meta">Generato il ${new Date().toLocaleDateString("it-IT")} · ${quotes.length} citazioni</div>
+<pre>${result}</pre>
+</body></html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `analisi-${(noteTitle || "nota").toLowerCase().replace(/\s+/g, "-").slice(0,40)}.html`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const downloadTXT = () => {
+    const txt = `ANALISI — ${noteTitle || "Nota di lettura"}
+${"─".repeat(50)}
+${new Date().toLocaleDateString("it-IT")} · ${quotes.length} citazioni
+
+${result}`;
+    const blob = new Blob([txt], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url;
+    a.download = `analisi-${(noteTitle || "nota").toLowerCase().replace(/\s+/g, "-").slice(0,40)}.txt`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)}
+      style={{ background: "none", border: "1px solid #e0d8cc", borderRadius: "6px", padding: "3px 10px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#8b7355", display: "flex", alignItems: "center", gap: "5px" }}
+      onMouseEnter={(e) => e.currentTarget.style.background = "#f5f0e8"}
+      onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+    >
+      ✦ analizza
+    </button>
+  );
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(44,36,22,0.35)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+      <div style={{ background: "#fff", borderRadius: "14px", width: "100%", maxWidth: "680px", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+        {/* Header */}
+        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #f0ede8", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "17px", fontWeight: "600", color: "#2c2416" }}>✦ Assistente di lettura</div>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#a09080", marginTop: "2px" }}>{quotes.length} citazioni disponibili</div>
+          </div>
+          <button onClick={() => { setOpen(false); setResult(null); setTagSuggestions(null); setError(null); }}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: "18px", color: "#b0a898", padding: "4px" }}>✕</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+          {/* Prompt predefiniti */}
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#a09080", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>Analisi predefinite</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+              {READING_PROMPTS.map((p) => (
+                <button key={p.id} onClick={() => { setSelectedPrompt(p); setCustomPrompt(""); }}
+                  style={{
+                    background: selectedPrompt?.id === p.id ? "#f0ece4" : "none",
+                    border: `1px solid ${selectedPrompt?.id === p.id ? "#c4a882" : "#e0d8cc"}`,
+                    borderRadius: "20px", padding: "5px 12px", cursor: "pointer",
+                    fontFamily: "'DM Mono', monospace", fontSize: "11px",
+                    color: selectedPrompt?.id === p.id ? "#6b5e4e" : "#8b7355",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseEnter={(e) => { if (selectedPrompt?.id !== p.id) e.currentTarget.style.background = "#faf7f2"; }}
+                  onMouseLeave={(e) => { if (selectedPrompt?.id !== p.id) e.currentTarget.style.background = "none"; }}
+                >{p.label}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Prompt libero */}
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#a09080", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>Oppure scrivi un prompt</div>
+            <textarea value={customPrompt} onChange={(e) => { setCustomPrompt(e.target.value); setSelectedPrompt(null); }}
+              placeholder="Es. Quali citazioni si prestano meglio a una critica del capitalismo?"
+              style={{ width: "100%", minHeight: "70px", padding: "10px 12px", border: "1px solid #e0d8cc", borderRadius: "8px", fontFamily: "'Lora', serif", fontSize: "13px", color: "#2c2416", background: "#faf8f5", outline: "none", resize: "vertical", boxSizing: "border-box" }}
+            />
+          </div>
+
+          {/* Error */}
+          {error && <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#c04040", marginBottom: "12px" }}>{error}</div>}
+
+          {/* Result */}
+          {result && (
+            <div style={{ marginBottom: "16px" }}>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#a09080", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>Risultato</div>
+              <div style={{ background: "#faf8f5", border: "1px solid #e8e3db", borderRadius: "8px", padding: "16px", fontFamily: "'Lora', serif", fontSize: "14px", color: "#2c2416", lineHeight: "1.75", whiteSpace: "pre-wrap" }}>{result}</div>
+              <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
+                <button onClick={downloadHTML}
+                  style={{ background: "#2c2416", border: "none", borderRadius: "6px", padding: "7px 16px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#f0e8d8" }}>
+                  ↓ HTML
+                </button>
+                <button onClick={downloadTXT}
+                  style={{ background: "none", border: "1px solid #e0d8cc", borderRadius: "6px", padding: "7px 16px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#6b5e4e" }}>
+                  ↓ TXT
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Tag suggestions */}
+          {tagSuggestions && (
+            <div style={{ marginBottom: "16px" }}>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#a09080", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "10px" }}>Tag suggeriti</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {tagSuggestions.map((item, i) => (
+                  <div key={i} style={{ background: "#faf8f5", border: "1px solid #e8e3db", borderRadius: "8px", padding: "12px" }}>
+                    <div style={{ fontFamily: "'Lora', serif", fontSize: "13px", color: "#2c2416", marginBottom: "8px", fontStyle: "italic" }}>«{item.testo_breve}»</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {(item.tag_suggeriti || []).map((tag) => (
+                        <span key={tag} style={{ background: "#e8e3da", borderRadius: "20px", padding: "2px 10px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#6b5e4e" }}>{tag}</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => onApplyTags && onApplyTags(tagSuggestions)}
+                style={{ marginTop: "12px", background: "#2c2416", border: "none", borderRadius: "6px", padding: "7px 16px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#f0e8d8" }}>
+                ✓ Applica tag alle citazioni
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "14px 24px", borderTop: "1px solid #f0ede8", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+          <button onClick={() => { setOpen(false); setResult(null); setTagSuggestions(null); setError(null); }}
+            style={{ background: "none", border: "1px solid #e0d8cc", borderRadius: "6px", padding: "8px 18px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "12px", color: "#8b7355" }}>
+            Chiudi
+          </button>
+          <button onClick={analyze} disabled={loading || (!selectedPrompt && !customPrompt.trim())}
+            style={{ background: loading ? "#a09080" : "#2c2416", border: "none", borderRadius: "6px", padding: "8px 20px", cursor: loading ? "not-allowed" : "pointer", fontFamily: "'DM Mono', monospace", fontSize: "12px", color: "#f0e8d8", opacity: (!selectedPrompt && !customPrompt.trim()) ? 0.5 : 1, transition: "background 0.2s" }}>
+            {loading ? "⏳ analisi in corso…" : "✦ Analizza"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReadingEditor({ note, folders, onUpdate, allNotes = [], onPreview, audioApiKey, openaiApiKey }) {
   const [title, setTitle] = useState(note.title);
   const [tags, setTags] = useState(note.tags);
@@ -812,6 +1040,7 @@ function ReadingEditor({ note, folders, onUpdate, allNotes = [], onPreview, audi
   const [groupByBook, setGroupByBook] = useState(true);
   const [dragIdx, setDragIdx] = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
+  const [showAssistant, setShowAssistant] = useState(false);
 
   const noteRef = useRef(note);
   useEffect(() => { noteRef.current = note; }, [note]);
@@ -932,12 +1161,28 @@ function ReadingEditor({ note, folders, onUpdate, allNotes = [], onPreview, audi
               {groupByBook ? "📚 per libro" : "📋 libera"}
             </button>
           </div>
-          <button
-            onClick={() => { setAddingQuote(true); setNewQuote({ text: "", author: "", bookTitle: "", chapter: "", page: "", comment: "", tags: [] }); }}
-            style={{ background: "#c4a882", border: "none", borderRadius: "6px", padding: "5px 14px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#2c2416" }}
-          >
-            + aggiungi citazione
-          </button>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {quotes.length >= 2 && (
+              <ReadingAssistant
+                quotes={quotes}
+                noteTitle={title}
+                apiKey={audioApiKey}
+                onApplyTags={(suggestions) => {
+                  setQuotes((prev) => prev.map((q) => {
+                    const match = suggestions.find((s) => q.text.includes(s.testo_breve?.slice(0, 30)));
+                    if (!match) return q;
+                    return { ...q, tags: [...new Set([...(q.tags || []), ...(match.tag_suggeriti || [])])] };
+                  }));
+                }}
+              />
+            )}
+            <button
+              onClick={() => { setAddingQuote(true); setNewQuote({ text: "", author: "", bookTitle: "", chapter: "", page: "", comment: "", tags: [] }); }}
+              style={{ background: "#c4a882", border: "none", borderRadius: "6px", padding: "5px 14px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#2c2416" }}
+            >
+              + aggiungi citazione
+            </button>
+          </div>
         </div>
 
         {/* New quote form */}
