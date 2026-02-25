@@ -3156,6 +3156,148 @@ function noteToTxt(note) {
 
 // ─── Export single note button ────────────────────────────────────────────────
 
+// ─── Export / Import Panel ────────────────────────────────────────────────────
+
+function ExportImportPanel({ notes, folders, onImport, onClose, onSaveApiKey, currentApiKey, onSaveOpenaiKey, currentOpenaiKey }) {
+  const [tab,           setTab]           = useState("settings");
+  const [apiKey,        setApiKey]        = useState(currentApiKey || "");
+  const [openaiKey,     setOpenaiKey]     = useState(currentOpenaiKey || "");
+  const [apiKeySaved,   setApiKeySaved]   = useState(false);
+  const [openaiSaved,   setOpenaiSaved]   = useState(false);
+  const [importError,   setImportError]   = useState(null);
+
+  const exportJSON = () => {
+    const data = { notes, folders, exportedAt: new Date().toISOString(), version: 1 };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `notes-export-${new Date().toISOString().slice(0,10)}.json`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!data.notes) throw new Error("Formato non valido");
+        onImport(data.notes, data.folders || []);
+        onClose();
+      } catch (err) { setImportError("Errore: " + err.message); }
+    };
+    reader.readAsText(file);
+  };
+
+  const saveApiKey = () => { onSaveApiKey(apiKey); setApiKeySaved(true); setTimeout(() => setApiKeySaved(false), 2000); };
+  const saveOpenaiKey = () => { onSaveOpenaiKey(openaiKey); setOpenaiSaved(true); setTimeout(() => setOpenaiSaved(false), 2000); };
+
+  const TABS = [{ id: "settings", label: "⚙ Impostazioni" }, { id: "data", label: "📦 Dati" }];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(44,36,22,0.35)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+      <div style={{ background: "#fff", borderRadius: "14px", width: "100%", maxWidth: "520px", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+        {/* Header */}
+        <div style={{ padding: "20px 24px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "17px", fontWeight: "600", color: "#2c2416" }}>Impostazioni</div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: "18px", color: "#b0a898" }}>✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: "4px", padding: "12px 24px 0" }}>
+          {TABS.map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              style={{ background: tab === t.id ? "#f0ece4" : "none", border: "1px solid " + (tab === t.id ? "#c4a882" : "#e0d8cc"), borderRadius: "6px", padding: "5px 14px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: tab === t.id ? "#6b5e4e" : "#8b7355" }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+          {tab === "settings" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {/* Anthropic API Key */}
+              <div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#a09080", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>Anthropic API Key</div>
+                <div style={{ fontSize: "12px", color: "#9a8f82", fontFamily: "'DM Mono', monospace", marginBottom: "8px" }}>Usata per trascrizione audio e assistente di lettura</div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="sk-ant-api03-..."
+                    style={{ flex: 1, border: "1px solid #e0d8cc", borderRadius: "6px", padding: "8px 12px", fontFamily: "'DM Mono', monospace", fontSize: "12px", color: "#2c2416", background: "#fff", outline: "none" }}
+                  />
+                  <button onClick={saveApiKey}
+                    style={{ background: "#2c2416", border: "none", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#f0e8d8", whiteSpace: "nowrap" }}>
+                    {apiKeySaved ? "✓ salvata" : "Salva"}
+                  </button>
+                </div>
+              </div>
+
+              {/* OpenAI API Key */}
+              <div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#a09080", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>OpenAI API Key</div>
+                <div style={{ fontSize: "12px", color: "#9a8f82", fontFamily: "'DM Mono', monospace", marginBottom: "8px" }}>Usata per trascrizione Whisper</div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <input type="password" value={openaiKey} onChange={(e) => setOpenaiKey(e.target.value)}
+                    placeholder="sk-..."
+                    style={{ flex: 1, border: "1px solid #e0d8cc", borderRadius: "6px", padding: "8px 12px", fontFamily: "'DM Mono', monospace", fontSize: "12px", color: "#2c2416", background: "#fff", outline: "none" }}
+                  />
+                  <button onClick={saveOpenaiKey}
+                    style={{ background: "#2c2416", border: "none", borderRadius: "6px", padding: "8px 16px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#f0e8d8", whiteSpace: "nowrap" }}>
+                    {openaiSaved ? "✓ salvata" : "Salva"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {tab === "data" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {/* Export */}
+              <div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#a09080", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>Esporta</div>
+                <div style={{ fontSize: "13px", color: "#6b5e4e", fontFamily: "'Lora', serif", marginBottom: "12px" }}>Scarica tutte le note e le cartelle in formato JSON.</div>
+                <button onClick={exportJSON}
+                  style={{ background: "#2c2416", border: "none", borderRadius: "6px", padding: "9px 20px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "12px", color: "#f0e8d8" }}>
+                  ↓ Esporta JSON
+                </button>
+              </div>
+
+              {/* Import */}
+              <div>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#a09080", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>Importa</div>
+                <div style={{ fontSize: "13px", color: "#6b5e4e", fontFamily: "'Lora', serif", marginBottom: "12px" }}>Importa note da un file JSON esportato in precedenza. Le note esistenti verranno mantenute.</div>
+                <label style={{ background: "none", border: "1px solid #c4a882", borderRadius: "6px", padding: "9px 20px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "12px", color: "#6b5e4e", display: "inline-block" }}>
+                  ↑ Scegli file JSON
+                  <input type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
+                </label>
+                {importError && <div style={{ marginTop: "8px", fontFamily: "'DM Mono', monospace", fontSize: "11px", color: "#c04040" }}>{importError}</div>}
+              </div>
+
+              {/* Reset demo */}
+              <div style={{ paddingTop: "12px", borderTop: "1px solid #f0ede8" }}>
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#a09080", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>Reset demo</div>
+                <div style={{ fontSize: "13px", color: "#6b5e4e", fontFamily: "'Lora', serif", marginBottom: "12px" }}>Cancella tutti i dati locali e ricarica le note di esempio.</div>
+                <button onClick={() => { localStorage.clear(); window.location.reload(); }}
+                  style={{ background: "none", border: "1px solid #e0a0a0", borderRadius: "6px", padding: "9px 20px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "12px", color: "#c04040" }}>
+                  Reset demo
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: "14px 24px", borderTop: "1px solid #f0ede8", display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={onClose}
+            style={{ background: "none", border: "1px solid #e0d8cc", borderRadius: "6px", padding: "8px 20px", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: "12px", color: "#8b7355" }}>
+            Chiudi
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ExportNoteButton({ note }) {
   const [open, setOpen] = useState(false);
   const ref = useRef();
