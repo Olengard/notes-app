@@ -97,11 +97,13 @@ async function syncNoteToSupabase(note, userId) {
 
 async function deleteNoteFromSupabase(noteId) {
   try {
+    // Soft delete — set deleted_at so realtime UPDATE propagates to all devices
+    await supabase.from("notes").update({ deleted_at: new Date().toISOString() }).eq("id", noteId);
+    // Clean up child records
     await Promise.all([
       supabase.from("todos").delete().eq("note_id", noteId),
       supabase.from("quotes").delete().eq("note_id", noteId),
     ]);
-    await supabase.from("notes").delete().eq("id", noteId);
   }
   catch (e) { console.warn("Delete sync error:", e); }
 }
@@ -3059,7 +3061,7 @@ export default function NotesApp() {
     if (!user) return;
     const channel = supabase
       .channel("notes-realtime")
-      .on("postgres_changes", { event: "DELETE", schema: "public", table: "notes" },
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
         (payload) => {
           const deletedId = payload.old?.id;
           if (deletedId) {
@@ -3078,7 +3080,15 @@ export default function NotesApp() {
         }
       )
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notes", filter: `user_id=eq.${user.id}` },
-        async () => {
+        async (payload) => {
+          // If deleted_at was set, remove from local state immediately
+          if (payload.new?.deleted_at) {
+            const deletedId = payload.new.id;
+            deletedIdsRef.current.add(deletedId);
+            setNotes((prev) => prev.filter((n) => n.id !== deletedId));
+            return;
+          }
+          // Otherwise pull full update
           const remote = await pullFromSupabase(user.id);
           if (!remote) return;
           setNotes(remote.notes.filter((n) => !deletedIdsRef.current.has(n.id)));
