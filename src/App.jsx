@@ -833,11 +833,8 @@ function ReadingAssistant({ quotes, noteTitle, apiKey, onApplyTags }) {
 
     const quotesText = quotes.map((q, i) => {
       const src = [q.author, q.bookTitle, q.chapter, q.page ? `p.${q.page}` : ""].filter(Boolean).join(", ");
-      return `[${i + 1}] ${src ? `(${src}) ` : ""}«${q.text}»${q.comment ? `
-Commento: ${q.comment}` : ""}`;
-    }).join("
-
-");
+      return `[${i + 1}] ${src ? `(${src}) ` : ""}«${q.text}»${q.comment ? `\nCommento: ${q.comment}` : ""}`;
+    }).join("\n\n");
 
     const systemPrompt = `Sei un assistente per l'analisi e l'organizzazione di note di lettura. 
 Stai analizzando le citazioni della nota "${noteTitle || "Senza titolo"}".
