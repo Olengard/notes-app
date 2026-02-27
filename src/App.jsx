@@ -2098,14 +2098,15 @@ function JournalEditor({ note, folders, onUpdate, audioApiKey, openaiApiKey }) {
           </select>
           <TagInput tags={tags} onChange={setTags} />
           <AudioRecorder noteType="journal" apiKey={audioApiKey} openaiKey={openaiApiKey} onResult={(r) => {
+            console.log("[journal onResult]", JSON.stringify(r));
             const today = new Date().toISOString().slice(0, 10);
+            const text = r.content || r.text || r.transcript || "";
             const existing = entries.find((e) => e.date === today);
             if (existing) {
-              setEntries((p) => p.map((e) => e.date === today ? { ...e, content: e.content + "\n" + (r.content || "") } : e));
+              setEntries((p) => p.map((e) => e.date === today ? { ...e, content: (e.content ? e.content + "\n" : "") + text } : e));
             } else {
-              setEntries((p) => [{ id: generateId(), date: today, content: r.content || "" }, ...p]);
+              setEntries((p) => [{ id: generateId(), date: today, content: text }, ...p]);
             }
-            scheduleSave();
           }} />
           <span style={{ marginLeft: "auto", fontSize: "11px", color: "#b0a898", fontFamily: "'DM Mono', monospace" }}>
             {entries.length} entr{entries.length === 1 ? "y" : "ies"}
