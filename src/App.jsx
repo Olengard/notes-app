@@ -3419,6 +3419,42 @@ export default function NotesApp() {
   const [openaiApiKey, setOpenaiApiKey] = useState(() => { try { return localStorage.getItem('notes_openai_key') || ''; } catch { return ''; } });
   const [sortOrder,    setSortOrder]    = useState("updated"); // updated | created | alpha
 
+  // ── Deep link da ReadS: ?new=1&text=...&source=... ──
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("new") !== "1") return;
+      const text    = params.get("text")   || "";
+      const source  = params.get("source") || "";
+      if (!text && !source) return;
+
+      // Costruisce il contenuto HTML della nota
+      const titleStr = source ? `Note — ${source}` : "Note da ReadS";
+      const lines = text.split("\n").filter(Boolean);
+      const htmlContent = lines.map((l) => `<p>${l}</p>`).join("") || "<p></p>";
+
+      const newNote = {
+        id: generateId(),
+        type: "text",
+        title: titleStr,
+        folder: "Generale",
+        tags: source ? ["lettura", "reads"] : ["reads"],
+        content: htmlContent,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setNotes((prev) => [newNote, ...prev]);
+      setActiveNote(newNote);
+
+      // Pulisce l'URL senza ricaricare la pagina
+      window.history.replaceState({}, "", window.location.pathname);
+    } catch (e) {
+      console.warn("Deep link ReadS error:", e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Auth state ──
   const [user,        setUser]        = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
